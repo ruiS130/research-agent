@@ -1,9 +1,10 @@
 """GET /history — past research sessions from RAG."""
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app.rag.memory import list_session_history
-from app.schemas import HistoryItem, HistoryResponse
+from app.rag.store import get_session_by_id
+from app.schemas import HistoryDetailResponse, HistoryItem, HistoryResponse
 
 router = APIRouter(prefix="/history", tags=["history"])
 
@@ -25,3 +26,17 @@ async def get_history(
         for s in sessions
     ]
     return HistoryResponse(query=q, sessions=items)
+
+
+@router.get("/{session_id}", response_model=HistoryDetailResponse)
+async def get_history_session(session_id: str) -> HistoryDetailResponse:
+    session = get_session_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Research session not found")
+    return HistoryDetailResponse(
+        session_id=session["session_id"],
+        topic=session["topic"],
+        report=session.get("report") or "",
+        sources=session.get("sources") or [],
+        created_at=session.get("created_at"),
+    )

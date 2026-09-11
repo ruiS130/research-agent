@@ -2,13 +2,18 @@
 
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.routers import history, research
 
 load_dotenv()
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 @asynccontextmanager
@@ -28,6 +33,9 @@ app = FastAPI(
 app.include_router(research.router)
 app.include_router(history.router)
 
+if STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
 
 @app.get("/health")
 async def health():
@@ -36,4 +44,13 @@ async def health():
         "status": "ok",
         "anthropic_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
         "chroma_persist_dir": chroma_dir,
+        "search_provider": (os.getenv("SEARCH_PROVIDER") or "ddg").lower(),
     }
+
+
+@app.get("/")
+async def demo_ui():
+    index = STATIC_DIR / "index.html"
+    if not index.is_file():
+        return {"message": "Demo UI not found. See /docs for the API."}
+    return FileResponse(index)

@@ -43,6 +43,7 @@ class ResearchStatusResponse(BaseModel):
     error: str | None = None
     created_at: datetime | None = None
     completed_at: datetime | None = None
+    last_node: str | None = None
 
 
 class HistoryItem(BaseModel):
@@ -56,3 +57,11 @@ class HistoryItem(BaseModel):
 class HistoryResponse(BaseModel):
     query: str | None = None
     sessions: list[HistoryItem]
+
+
+class HistoryDetailResponse(BaseModel):
+    session_id: str
+    topic: str
+    report: str
+    sources: list[dict] = Field(default_factory=list)
+    created_at: str | None = None

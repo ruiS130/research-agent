@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Research Agent</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    :root {
+      --bg: #f6f4ef;
+      --ink: #1a1a1a;
+      --muted: #5c5c5c;
+      --line: #d9d4c8;
+      --accent: #0b6e4f;
+      --accent-soft: #d8efe6;
+      --card: #fffdf8;
+      --danger: #9b1c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #e8f2ec 0%, transparent 55%),
+        radial-gradient(900px 400px at 100% 0%, #efe8d8 0%, transparent 50%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 4rem;
+    }
+    h1 {
+      font-size: clamp(1.8rem, 4vw, 2.4rem);
+      margin: 0 0 0.35rem;
+      letter-spacing: -0.02em;
+    }
+    .lede {
+      color: var(--muted);
+      margin: 0 0 1.75rem;
+      font-size: 1.05rem;
+    }
+    form {
+      display: grid;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    label { font-size: 0.9rem; color: var(--muted); }
+    textarea, input[type="text"] {
+      width: 100%;
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--card);
+      font: inherit;
+      resize: vertical;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: center;
+    }
+    .check {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    button {
+      appearance: none;
+      border: none;
+      background: var(--accent);
+      color: white;
+      padding: 0.75rem 1.25rem;
+      border-radius: 999px;
+      font: inherit;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .layout {
+      display: grid;
+      gap: 1.25rem;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 860px) {
+      .layout { grid-template-columns: 1.6fr 0.9fr; }
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1.1rem 1.2rem;
+    }
+    .panel h2 {
+      margin: 0 0 0.85rem;
+      font-size: 1.05rem;
+    }
+    .steps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-bottom: 1rem;
+    }
+    .step {
+      padding: 0.3rem 0.65rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-transform: lowercase;
+    }
+    .step.active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .step.done {
+      background: #eceae3;
+      color: var(--ink);
+    }
+    .meta {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+    .error { color: var(--danger); }
+    #report {
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+    #report h1, #report h2, #report h3 { margin-top: 1.2em; }
+    #report a { color: var(--accent); }
+    .history-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 0.65rem;
+    }
+    .history-list button {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.7rem 0.8rem;
+    }
+    .history-list button:hover { border-color: var(--accent); }
+    .history-list .topic { font-weight: 600; display: block; }
+    .history-list .snippet {
+      display: block;
+      margin-top: 0.25rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+    .empty { color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Research Agent</h1>
+    <p class="lede">Multi-step research with live progress, then a markdown report.</p>
+
+    <form id="research-form">
+      <label for="topic">Topic</label>
+      <textarea id="topic" rows="3" required minlength="3" placeholder="e.g. Latest advances in solid-state batteries"></textarea>
+      <div class="row">
+        <label class="check">
+          <input type="checkbox" id="use-past" checked />
+          Use past research
+        </label>
+        <button type="submit" id="submit-btn">Start research</button>
+      </div>
+    </form>
+
+    <div class="layout">
+      <section class="panel">
+        <h2>Live run</h2>
+        <div class="steps" id="steps"></div>
+        <div class="meta" id="meta">Idle</div>
+        <div id="report" class="empty">Submit a topic to begin.</div>
+      </section>
+      <aside class="panel">
+        <h2>History</h2>
+        <ul class="history-list" id="history"></ul>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    const STEPS = ["plan", "search", "extract", "synthesize", "gap_check", "done"];
+    const form = document.getElementById("research-form");
+    const topicEl = document.getElementById("topic");
+    const usePastEl = document.getElementById("use-past");
+    const submitBtn = document.getElementById("submit-btn");
+    const stepsEl = document.getElementById("steps");
+    const metaEl = document.getElementById("meta");
+    const reportEl = document.getElementById("report");
+    const historyEl = document.getElementById("history");
+    let es = null;
+
+    function renderSteps(active) {
+      stepsEl.innerHTML = "";
+      const idx = STEPS.indexOf(active);
+      STEPS.forEach((name, i) => {
+        const span = document.createElement("span");
+        span.className = "step";
+        span.textContent = name;
+        if (name === active) span.classList.add("active");
+        else if (idx > i) span.classList.add("done");
+        stepsEl.appendChild(span);
+      });
+    }
+
+    function showReport(md) {
+      if (!md) {
+        reportEl.className = "empty";
+        reportEl.textContent = "Waiting for report…";
+        return;
+      }
+      reportEl.className = "";
+      reportEl.innerHTML = marked.parse(md);
+    }
+
+    function setMeta(text, isError) {
+      metaEl.textContent = text;
+      metaEl.className = "meta" + (isError ? " error" : "");
+    }
+
+    async function loadHistory() {
+      try {
+        const res = await fetch("/history?limit=12");
+        const data = await res.json();
+        historyEl.innerHTML = "";
+        if (!data.sessions || !data.sessions.length) {
+          historyEl.innerHTML = '<li class="empty">No past sessions yet.</li>';
+          return;
+        }
+        for (const s of data.sessions) {
+          const li = document.createElement("li");
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.innerHTML =
+            '<span class="topic"></span><span class="snippet"></span>';
+          btn.querySelector(".topic").textContent = s.topic;
+          btn.querySelector(".snippet").textContent = s.snippet || "";
+          btn.addEventListener("click", () => openSession(s.session_id));
+          li.appendChild(btn);
+          historyEl.appendChild(li);
+        }
+      } catch (err) {
+        historyEl.innerHTML = '<li class="empty">Could not load history.</li>';
+      }
+    }
+
+    async function openSession(id) {
+      if (es) { es.close(); es = null; }
+      setMeta("Loading session " + id);
+      const res = await fetch("/history/" + id);
+      if (!res.ok) {
+        setMeta("Session not found", true);
+        return;
+      }
+      const data = await res.json();
+      renderSteps("done");
+      setMeta("Past session · " + data.topic);
+      showReport(data.report || "");
+    }
+
+    function attachStream(jobId) {
+      if (es) es.close();
+      es = new EventSource("/research/" + jobId + "/stream");
+
+      const onPayload = (raw, terminal) => {
+        let data;
+        try { data = JSON.parse(raw); } catch { return; }
+        const node = data.last_node || data.status;
+        if (node) renderSteps(node === "error" ? "done" : node);
+        setMeta(
+          (terminal ? "Finished · " : "Running · ") +
+            (data.status || "") +
+            (data.last_node ? " (" + data.last_node + ")" : ""),
+          data.status === "error"
+        );
+        if (data.report) showReport(data.report);
+        if (data.error) {
+          reportEl.className = "error";
+          reportEl.textContent = data.error;
+        }
+        if (terminal) {
+          submitBtn.disabled = false;
+          loadHistory();
+          es.close();
+          es = null;
+        }
+      };
+
+      es.addEventListener("progress", (e) => onPayload(e.data, false));
+      es.addEventListener("done", (e) => onPayload(e.data, true));
+      es.addEventListener("error", (e) => {
+        if (e.data) onPayload(e.data, true);
+        else {
+          setMeta("Stream disconnected", true);
+          submitBtn.disabled = false;
+        }
+      });
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      submitBtn.disabled = true;
+      renderSteps("plan");
+      setMeta("Starting…");
+      showReport("");
+      try {
+        const res = await fetch("/research", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            topic: topicEl.value.trim(),
+            use_past_research: usePastEl.checked,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || "Failed to start research");
+        }
+        const job = await res.json();
+        setMeta("Job " + job.id);
+        attachStream(job.id);
+      } catch (err) {
+        setMeta(String(err.message || err), true);
+        submitBtn.disabled = false;
+      }
+    });
+
+    renderSteps(null);
+    loadHistory();
+  </script>
+</body>
+</html>

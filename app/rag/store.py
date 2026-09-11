@@ -83,3 +83,72 @@ async def upsert_research_session(
             documents=source_docs,
             metadatas=source_metas,
         )
+
+
+def reset_chroma_client() -> None:
+    """Drop the cached client (used in tests with a temp persist dir)."""
+    global _chroma_client
+    _chroma_client = None
+
+
+def get_session_by_id(session_id: str) -> dict | None:
+    """
+    Load a completed research session from Chroma by id.
+    Returns {session_id, topic, report, sources, created_at} or None.
+    """
+    collection = get_collection()
+    try:
+        main = collection.get(ids=[session_id], include=["documents", "metadatas"])
+    except Exception:
+        return None
+
+    if not main.get("ids"):
+        return None
+
+    meta = (main.get("metadatas") or [None])[0] or {}
+    document = (main.get("documents") or [""])[0] or ""
+    topic = meta.get("topic", "")
+    report = document
+    prefix = f"Topic: {topic}\n\n"
+    if topic and document.startswith(prefix):
+        report = document[len(prefix) :]
+
+    sources: list[dict] = []
+    try:
+        all_data = collection.get(include=["documents", "metadatas"])
+        for doc_id, src_meta, src_doc in zip(
+            all_data.get("ids") or [],
+            all_data.get("metadatas") or [],
+            all_data.get("documents") or [],
+        ):
+            if not src_meta or src_meta.get("session_id") != session_id:
+                continue
+            if src_meta.get("chunk_type") != "source":
+                continue
+            lines = (src_doc or "").split("\n", 2)
+            title = lines[0] if lines else ""
+            url = src_meta.get("source_url") or (lines[1] if len(lines) > 1 else "")
+            points_text = lines[2] if len(lines) > 2 else ""
+            key_points = [
+                p[2:].strip() if p.startswith("- ") else p.strip()
+                for p in points_text.split("\n")
+                if p.strip()
+            ]
+            sources.append(
+                {
+                    "url": url,
+                    "title": title,
+                    "key_points": key_points,
+                    "relevance_score": None,
+                }
+            )
+    except Exception:
+        sources = []
+
+    return {
+        "session_id": session_id,
+        "topic": topic,
+        "report": report,
+        "sources": sources,
+        "created_at": meta.get("created_at"),
+    }
