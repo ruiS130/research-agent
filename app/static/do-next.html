@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Do next · Research Agent</title>
+  <style>
+    :root {
+      --bg: #f6f4ef;
+      --ink: #1a1a1a;
+      --muted: #5c5c5c;
+      --line: #d9d4c8;
+      --accent: #0b6e4f;
+      --card: #fffdf8;
+      --wip: #8a5a00;
+      --wip-bg: #fff3d6;
+      --done: #0b6e4f;
+      --done-bg: #d8efe6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      background:
+        radial-gradient(1000px 420px at 0% 0%, #e8f2ec 0%, transparent 50%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    a { color: var(--accent); }
+    h1 { margin: 0 0 0.35rem; font-size: clamp(1.8rem, 4vw, 2.3rem); }
+    .lede { color: var(--muted); margin: 0 0 1.75rem; }
+    .nav { margin-bottom: 1.5rem; font-size: 0.95rem; }
+    .item {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1.1rem 1.2rem;
+      margin-bottom: 0.85rem;
+    }
+    .item h2 { margin: 0 0 0.4rem; font-size: 1.1rem; }
+    .item p { margin: 0; color: var(--muted); line-height: 1.45; font-size: 0.95rem; }
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      margin-bottom: 0.55rem;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+    .badge.wip { background: var(--wip-bg); color: var(--wip); }
+    .badge.todo { background: #eceae3; color: var(--muted); }
+    .badge.done { background: var(--done-bg); color: var(--done); }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.85em;
+      background: #eceae3;
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+    ul { margin: 0.6rem 0 0; padding-left: 1.2rem; color: var(--muted); }
+    li { margin: 0.25rem 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="nav"><a href="/">← Research UI</a> · <a href="/docs">API docs</a></p>
+    <h1>Do next</h1>
+    <p class="lede">
+      Roadmap after the demo/reliability pass. Item 1 is started — not finished.
+    </p>
+
+    <article class="item">
+      <span class="badge wip">In progress · partial</span>
+      <h2>1. Durable in-flight jobs (SQLite)</h2>
+      <p>
+        Persist job rows so status survives process restart — not only completed
+        Chroma reports.
+      </p>
+      <ul>
+        <li><strong>Done:</strong> <code>app/jobs/store.py</code> schema, <code>create_job</code>, <code>get_job</code></li>
+        <li><strong>Done:</strong> new jobs written to SQLite on <code>POST /research</code>; resolve also reads SQLite</li>
+        <li><strong>Not done:</strong> write status on every graph node update</li>
+        <li><strong>Not done:</strong> mark interrupted jobs on boot; remove in-memory <code>_jobs</code></li>
+        <li><strong>Not done:</strong> resume a mid-pipeline LangGraph run after crash</li>
+      </ul>
+    </article>
+
+    <article class="item">
+      <span class="badge todo">Todo</span>
+      <h2>2. Deploy story</h2>
+      <p>Dockerfile + short run-anywhere docs so demos aren’t laptop-only.</p>
+    </article>
+
+    <article class="item">
+      <span class="badge todo">Todo</span>
+      <h2>3. Auth + rate limit</h2>
+      <p>Simple API key (or basic login) before exposing beyond localhost.</p>
+    </article>
+
+    <article class="item">
+      <span class="badge todo">Todo</span>
+      <h2>4. Observability</h2>
+      <p>Structured logs with <code>job_id</code>, per-node timing, rough token/cost.</p>
+    </article>
+
+    <article class="item">
+      <span class="badge todo">Todo</span>
+      <h2>5. UI polish</h2>
+      <p>Live sources/gaps, cancel button, download markdown.</p>
+    </article>
+
+    <article class="item">
+      <span class="badge done">Shipped</span>
+      <h2>Earlier round</h2>
+      <p>
+        SSE progress, demo UI, Chroma recovery for completed jobs,
+        <code>GET /history/{id}</code>, pytest suite, search provider fallback.
+      </p>
+    </article>
+  </div>
+</body>
+</html>

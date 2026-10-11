@@ -41,6 +41,7 @@ Open the demo UI at http://localhost:8000/
 |--------|------|-------------|
 | GET | `/health` | Health check |
 | GET | `/` | Demo UI |
+| GET | `/do-next` | Roadmap / next work |
 | POST | `/research` | Start a research job |
 | GET | `/research/{id}` | Poll status and result (falls back to Chroma after restart) |
 | GET | `/research/{id}/stream` | SSE progress events |
@@ -112,3 +113,4 @@ tests/              # pytest suite
 - [x] `GET /history/{session_id}` full report
 - [x] pytest suite with mocked Claude/search
 - [x] Optional search provider (Tavily/Serper) fallback
+- [~] Durable SQLite jobs (create/get only — open `/do-next` when the server is running)

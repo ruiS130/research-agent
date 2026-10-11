@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 
 from app.agent.graph import research_graph
 from app.agent.state import initial_state
+from app.jobs.store import create_job, get_job
 from app.rag.retriever import format_sources_for_response
 from app.rag.store import get_session_by_id
 from app.schemas import ResearchJobResponse, ResearchRequest, ResearchStatusResponse
@@ -68,12 +69,18 @@ def _resolve_job(job_id: str) -> dict | None:
     job = _jobs.get(job_id)
     if job:
         return job
+    # Prefer Chroma when present (completed report). SQLite create-only rows
+    # may still say "pending" until we wire live upserts (/do-next item 1).
     session = get_session_by_id(job_id)
-    if not session:
-        return None
-    recovered = _session_to_job(session)
-    _jobs[job_id] = recovered
-    return recovered
+    if session:
+        recovered = _session_to_job(session)
+        _jobs[job_id] = recovered
+        return recovered
+    persisted = get_job(job_id)
+    if persisted:
+        _jobs[job_id] = persisted
+        return persisted
+    return None
 
 
 @router.post("", response_model=ResearchJobResponse)
@@ -82,7 +89,7 @@ async def start_research(
     background_tasks: BackgroundTasks,
 ) -> ResearchJobResponse:
     job_id = str(uuid.uuid4())
-    _jobs[job_id] = {
+    job = {
         "id": job_id,
         "topic": body.topic,
         "status": "pending",
@@ -95,6 +102,9 @@ async def start_research(
         "last_node": None,
         "event_seq": 0,
     }
+    _jobs[job_id] = job
+    # Persist create only for now; live status updates still in-memory (see /do-next)
+    create_job(job)
 
     background_tasks.add_task(_run_research, job_id, body.topic, body.use_past_research)
 

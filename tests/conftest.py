@@ -17,12 +17,17 @@ os.environ.setdefault("SEARCH_PROVIDER", "ddg")
 def chroma_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     persist = tmp_path / "chroma"
     persist.mkdir()
+    jobs_db = tmp_path / "jobs.db"
     monkeypatch.setenv("CHROMA_PERSIST_DIR", str(persist))
+    monkeypatch.setenv("JOBS_DB_PATH", str(jobs_db))
     from app.rag import store
+    from app.jobs import store as job_store
 
     store.reset_chroma_client()
+    job_store.reset_db_connection()
     yield persist
     store.reset_chroma_client()
+    job_store.reset_db_connection()
 
 
 @pytest.fixture()

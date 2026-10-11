@@ -20,6 +20,10 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 async def lifespan(app: FastAPI):
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise RuntimeError("ANTHROPIC_API_KEY is required (see .env.example)")
+    # Partial durable jobs: ensure SQLite schema exists (full cutover still TODO)
+    from app.jobs.store import init_db
+
+    init_db()
     yield
 
 
@@ -54,3 +58,11 @@ async def demo_ui():
     if not index.is_file():
         return {"message": "Demo UI not found. See /docs for the API."}
     return FileResponse(index)
+
+
+@app.get("/do-next")
+async def do_next_page():
+    page = STATIC_DIR / "do-next.html"
+    if not page.is_file():
+        return {"message": "Do-next page not found."}
+    return FileResponse(page)
