@@ -9,6 +9,8 @@ plan → search → extract → synthesize → gap_check ─┬─→ search (ma
                                                    └─→ done → ChromaDB
 ```
 
+While a job runs, status also lives in memory (and a **partial** SQLite row on create). See [TODO / roadmap](#todo--roadmap).
+
 ## Setup
 
 ```bash
@@ -30,10 +32,16 @@ pytest
 ## Run
 
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Open the demo UI at http://localhost:8000/
+| URL | What |
+|-----|------|
+| http://localhost:8000/ | Demo UI (topic, live SSE steps, report, history) |
+| http://localhost:8000/do-next | Same roadmap as below (needs server running) |
+| http://localhost:8000/docs | OpenAPI / Swagger |
+
+If the browser shows `ERR_CONNECTION_REFUSED`, nothing is listening on that port — start uvicorn first.
 
 ## API
 
@@ -41,9 +49,9 @@ Open the demo UI at http://localhost:8000/
 |--------|------|-------------|
 | GET | `/health` | Health check |
 | GET | `/` | Demo UI |
-| GET | `/do-next` | Roadmap / next work |
+| GET | `/do-next` | Roadmap page (mirror of README TODO) |
 | POST | `/research` | Start a research job |
-| GET | `/research/{id}` | Poll status and result (falls back to Chroma after restart) |
+| GET | `/research/{id}` | Poll status (memory → Chroma → SQLite) |
 | GET | `/research/{id}/stream` | SSE progress events |
 | GET | `/history?q=...` | List or search past sessions |
 | GET | `/history/{session_id}` | Full stored report for a session |
@@ -79,10 +87,13 @@ curl http://localhost:8000/history/<session-id>
 
 ```
 app/
-  main.py           # FastAPI app + static UI
+  main.py           # FastAPI app, / and /do-next, lifespan (Chroma + SQLite init)
   schemas.py        # Pydantic models
   static/
     index.html      # Demo UI
+    do-next.html    # In-browser roadmap (optional; README is source of truth when undeployed)
+  jobs/
+    store.py        # SQLite job store (partial: create/get only)
   agent/
     state.py        # TypedDict state
     graph.py        # LangGraph wiring
@@ -103,9 +114,24 @@ tests/              # pytest suite
 - Web search defaults to DuckDuckGo HTML (no extra API key). Set `SEARCH_PROVIDER=tavily` or `serper` (with the matching API key) for a more reliable provider; if DuckDuckGo returns nothing or errors, Tavily/Serper are tried when keys are set.
 - Claude model: `claude-sonnet-4-20250514` with 3 retries and exponential backoff.
 - Research reports persist in Chroma under `CHROMA_PERSIST_DIR` (default `./chroma_data`).
-- **Job id equals Chroma `session_id`.** In-memory job status is lost on restart; completed reports remain in Chroma and are served again via `GET /research/{id}` and `/history`.
+- **Job id equals Chroma `session_id`.**
+- Job lookup order after restart: in-memory → **Chroma** (completed) → **SQLite** (create snapshot; may still say `pending` until live upserts land).
+- SQLite path: `JOBS_DB_PATH` (default `./data/jobs.db`, gitignored).
 
-## TODO
+## Recent changes (local, not requiring deploy)
+
+- **Demo UI + SSE** — live step progress at `/` via `GET /research/{id}/stream`.
+- **Chroma recovery** — completed jobs reload after restart; `GET /history/{session_id}` for full reports.
+- **Search fallback** — optional Tavily/Serper when DDG fails (see `.env.example`).
+- **Tests** — `pytest` with mocked Claude/search (`requirements-dev.txt`).
+- **`/do-next` page** — in-app roadmap; this README section is the offline copy.
+- **Partial durable jobs** — `app/jobs/store.py`: schema, `create_job` / `get_job`; new jobs written on `POST /research`. Mid-run status upserts and removing `_jobs` are still open (below).
+
+## TODO / roadmap
+
+Readable here without running the server. The `/do-next` page shows the same list when uvicorn is up.
+
+### Shipped
 
 - [x] SSE progress: `GET /research/{id}/stream`
 - [x] Minimal web UI (topic, live steps, report, history)
@@ -113,4 +139,20 @@ tests/              # pytest suite
 - [x] `GET /history/{session_id}` full report
 - [x] pytest suite with mocked Claude/search
 - [x] Optional search provider (Tavily/Serper) fallback
-- [~] Durable SQLite jobs (create/get only — open `/do-next` when the server is running)
+- [x] `/do-next` roadmap page (also documented in this README)
+
+### In progress — durable in-flight jobs (SQLite)
+
+- [x] Schema + `init_db` / `create_job` / `get_job` (`app/jobs/store.py`)
+- [x] Persist job on `POST /research`; resolve can read SQLite
+- [ ] Upsert status / `last_node` / report on every graph node update
+- [ ] Mark interrupted jobs on process start
+- [ ] Drop in-memory `_jobs` dict (SQLite as source of truth while running)
+- [ ] (Later) Resume a mid-pipeline LangGraph run after crash
+
+### Next
+
+- [ ] Deploy story (Dockerfile + short run-anywhere docs)
+- [ ] Auth + rate limit (API key or basic login before public expose)
+- [ ] Observability (structured logs with `job_id`, per-node timing, cost)
+- [ ] UI polish (live sources/gaps, cancel, download markdown)
