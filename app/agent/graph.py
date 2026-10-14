@@ -10,9 +10,8 @@ from app.agent.nodes import (
     search_node,
     synthesize_node,
 )
+from app.agent.settings import max_gap_loops
 from app.agent.state import ResearchState
-
-MAX_GAP_LOOPS = 2
 
 
 def route_after_gap_check(state: ResearchState) -> str:
@@ -20,7 +19,7 @@ def route_after_gap_check(state: ResearchState) -> str:
     gaps = state.get("gaps") or []
     iteration = state.get("iteration", 0)
 
-    if gaps and iteration < MAX_GAP_LOOPS:
+    if gaps and iteration < max_gap_loops():
         return "search"
     return "done"
 

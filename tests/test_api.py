@@ -17,6 +17,7 @@ def test_health(client):
     body = res.json()
     assert body["status"] == "ok"
     assert body["anthropic_configured"] is True
+    assert body.get("cost_mode") == "min"
 
 
 def test_research_not_found(client):
@@ -36,7 +37,17 @@ def test_demo_ui(client):
 
 
 @pytest.mark.asyncio
-async def test_route_after_gap_check():
+async def test_route_after_gap_check(monkeypatch: pytest.MonkeyPatch):
+    # Default min cost: never re-search
+    monkeypatch.setenv("COST_MODE", "min")
+    monkeypatch.delenv("MAX_GAP_LOOPS", raising=False)
+    assert (
+        route_after_gap_check({"gaps": ["missing data"], "iteration": 0}) == "done"
+    )
+
+    # Full-quality loop budget
+    monkeypatch.setenv("COST_MODE", "full")
+    monkeypatch.setenv("MAX_GAP_LOOPS", "2")
     assert (
         route_after_gap_check({"gaps": ["missing data"], "iteration": 0}) == "search"
     )
@@ -54,15 +65,16 @@ async def test_graph_happy_path_no_gap_loop(chroma_tmp):
     gap_out = json.dumps({"gaps": [], "refined_queries": []})
 
     async def fake_claude(system: str, user: str, max_tokens: int = 4096) -> str:
-        if "research planner" in system.lower():
+        lower = system.lower()
+        if "planner" in lower:
             return plan_out
-        if "Extract key findings" in system:
+        if "extract key findings" in lower:
             return extract_out
-        if "research synthesizer" in system.lower():
+        if "synthesizer" in lower or "research brief" in lower:
             return report
-        if "gaps" in system.lower() or "Review the research" in system:
+        if "gaps" in lower or "review the research" in lower:
             return gap_out
-        return "{}"
+        return report
 
     async def fake_search(query: str, max_results: int = 5):
         return [
@@ -167,11 +179,11 @@ def test_chroma_recovery_after_job_cleared(client):
         lower = system.lower()
         if "planner" in lower:
             return plan_out
-        if "synthesizer" in lower:
-            return report
         if "extract key findings" in lower:
             return extract_out
-        return gap_out
+        if "synthesizer" in lower or "research brief" in lower:
+            return report
+        return report
 
     with (
         patch("app.agent.nodes.call_claude", new=AsyncMock(side_effect=fake_claude)),

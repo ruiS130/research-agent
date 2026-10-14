@@ -8,13 +8,20 @@ from typing import Any
 import anthropic
 from anthropic import APIConnectionError, APIStatusError, RateLimitError
 
+from app.agent.settings import (
+    anthropic_model,
+    is_min_cost,
+    max_gap_loops,
+    max_search_results,
+    max_sources_per_query,
+    max_sub_questions,
+    page_chars_for_llm,
+    synthesize_max_tokens,
+)
 from app.agent.state import ResearchState
 from app.agent.tools import fetch_page, store_to_rag, web_search
 from app.rag.memory import get_past_context_for_topic
 from app.rag.retriever import format_sources_for_response
-
-MODEL = "claude-sonnet-4-20250514"
-MAX_SOURCES_PER_QUERY = 3
 
 
 def _client() -> anthropic.AsyncAnthropic:
@@ -24,17 +31,18 @@ def _client() -> anthropic.AsyncAnthropic:
 async def call_claude(
     system: str,
     user: str,
-    max_tokens: int = 4096,
+    max_tokens: int = 1024,
 ) -> str:
     """Claude call with 3 retries and exponential backoff."""
     client = _client()
     delays = [1.0, 2.0, 4.0]
     last_error: Exception | None = None
+    model = anthropic_model()
 
     for attempt, delay in enumerate(delays, start=1):
         try:
             message = await client.messages.create(
-                model=MODEL,
+                model=model,
                 max_tokens=max_tokens,
                 system=system,
                 messages=[{"role": "user", "content": user}],
@@ -85,28 +93,38 @@ def _parse_json_object(text: str) -> dict[str, Any]:
 
 async def plan_node(state: ResearchState) -> ResearchState:
     topic = state["topic"]
+    limit = max_sub_questions()
+
+    # Min-cost: no planner LLM call — search the topic as a single query.
+    if is_min_cost():
+        return {
+            **state,
+            "sub_questions": [topic][:limit],
+            "status": "searching",
+        }
+
     past_context = ""
     if state.get("use_past_research", True):
         past_context = await get_past_context_for_topic(topic)
 
     system = (
-        "You are a research planner. Decompose the user's topic into 3-5 "
-        "focused sub-questions that together cover the topic thoroughly. "
+        "You are a research planner. Decompose the user's topic into "
+        f"1-{limit} focused sub-questions. "
         "Return ONLY a JSON array of strings, no other text."
     )
     user = f"Topic: {topic}\n"
     if past_context:
         user += f"\nRelevant past research:\n{past_context}\n"
-    user += "\nOutput a JSON array of 3-5 sub-questions."
+    user += f"\nOutput a JSON array of up to {limit} sub-questions."
 
-    raw = await call_claude(system, user, max_tokens=1024)
+    raw = await call_claude(system, user, max_tokens=512)
     sub_questions = _parse_json_array(raw)
     if not sub_questions:
         sub_questions = [topic]
 
     return {
         **state,
-        "sub_questions": sub_questions[:5],
+        "sub_questions": sub_questions[:limit],
         "status": "searching",
     }
 
@@ -119,9 +137,10 @@ async def search_node(state: ResearchState) -> ResearchState:
 
     all_results: list[dict] = list(state.get("search_results") or [])
     seen_urls = {r["url"] for r in all_results if r.get("url")}
+    per_query = max_search_results()
 
     for query in queries:
-        hits = await web_search(query, max_results=5)
+        hits = await web_search(query, max_results=per_query)
         for hit in hits:
             if hit["url"] not in seen_urls:
                 seen_urls.add(hit["url"])
@@ -140,16 +159,46 @@ async def extract_node(state: ResearchState) -> ResearchState:
     topic = state["topic"]
     findings: list[dict] = list(state.get("extracted_findings") or [])
     seen_urls = {f["source_url"] for f in findings}
+    per_query = max_sources_per_query()
 
-    # Group by query, take top N unique URLs
     by_query: dict[str, list[dict]] = {}
     for row in results:
         by_query.setdefault(row["query"], []).append(row)
 
+    # Min-cost: no extract LLM, no page fetch — use search snippets only.
+    if is_min_cost():
+        for _query, rows in by_query.items():
+            count = 0
+            for row in rows:
+                if count >= per_query:
+                    break
+                url = row["url"]
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                snippet = (row.get("snippet") or "").strip()
+                if not snippet:
+                    continue
+                findings.append(
+                    {
+                        "source_url": url,
+                        "title": row.get("title", ""),
+                        "key_points": [snippet[:400]],
+                        "relevance_score": 0.5,
+                    }
+                )
+                count += 1
+        return {
+            **state,
+            "extracted_findings": findings,
+            "status": "synthesizing",
+        }
+
+    chars = page_chars_for_llm()
     for _query, rows in by_query.items():
         count = 0
         for row in rows:
-            if count >= MAX_SOURCES_PER_QUERY:
+            if count >= per_query:
                 break
             url = row["url"]
             if url in seen_urls:
@@ -173,9 +222,9 @@ async def extract_node(state: ResearchState) -> ResearchState:
                 f"Topic: {topic}\n"
                 f"Source title: {row.get('title', '')}\n"
                 f"URL: {url}\n\n"
-                f"Content:\n{page_text[:8000]}"
+                f"Content:\n{page_text[:chars]}"
             )
-            raw = await call_claude(system, user, max_tokens=2048)
+            raw = await call_claude(system, user, max_tokens=1024)
             parsed = _parse_json_object(raw)
             key_points = parsed.get("key_points") or []
             if isinstance(key_points, str):
@@ -203,16 +252,35 @@ async def synthesize_node(state: ResearchState) -> ResearchState:
     topic = state["topic"]
     findings = state.get("extracted_findings") or []
 
-    findings_text = json.dumps(findings, indent=2)
-    system = (
-        "You are a research synthesizer. Merge the extracted findings into a "
-        "clear, structured markdown report with inline citations [1], [2] "
-        "mapping to source URLs listed at the end. Include an executive "
-        "summary, key findings, and open questions."
-    )
-    user = f"Topic: {topic}\n\nFindings:\n{findings_text}"
+    # Keep prompt small in min mode (tokens = money).
+    if is_min_cost():
+        compact = [
+            {
+                "url": f.get("source_url", ""),
+                "title": f.get("title", ""),
+                "points": (f.get("key_points") or [])[:2],
+            }
+            for f in findings[:4]
+        ]
+        findings_text = json.dumps(compact, separators=(",", ":"))
+        system = (
+            "Write a short markdown research brief (max ~400 words) with "
+            "citations [1], [2] and a Sources list of URLs. Be concise."
+        )
+        user = f"Topic: {topic}\nFindings:{findings_text}"
+    else:
+        findings_text = json.dumps(findings, indent=2)
+        system = (
+            "You are a research synthesizer. Merge the extracted findings into a "
+            "clear, structured markdown report with inline citations [1], [2] "
+            "mapping to source URLs listed at the end. Include an executive "
+            "summary, key findings, and open questions."
+        )
+        user = f"Topic: {topic}\n\nFindings:\n{findings_text}"
 
-    report = await call_claude(system, user, max_tokens=8192)
+    report = await call_claude(
+        system, user, max_tokens=synthesize_max_tokens()
+    )
 
     return {
         **state,
@@ -222,6 +290,15 @@ async def synthesize_node(state: ResearchState) -> ResearchState:
 
 
 async def gap_check_node(state: ResearchState) -> ResearchState:
+    # Min-cost: skip gap LLM and never loop — one synthesize call is enough.
+    if is_min_cost() or max_gap_loops() <= 0:
+        return {
+            **state,
+            "gaps": [],
+            "refined_queries": [],
+            "status": "done",
+        }
+
     topic = state["topic"]
     report = state.get("report") or ""
 
@@ -233,9 +310,9 @@ async def gap_check_node(state: ResearchState) -> ResearchState:
         "If the report is solid, return: "
         '{"gaps": [], "refined_queries": []}'
     )
-    user = f"Topic: {topic}\n\nReport:\n{report}"
+    user = f"Topic: {topic}\n\nReport:\n{report[:6000]}"
 
-    raw = await call_claude(system, user, max_tokens=2048)
+    raw = await call_claude(system, user, max_tokens=512)
     parsed = _parse_json_object(raw)
     gaps = parsed.get("gaps") or []
     refined = parsed.get("refined_queries") or []
@@ -245,7 +322,8 @@ async def gap_check_node(state: ResearchState) -> ResearchState:
         refined = [refined]
 
     iteration = state.get("iteration", 0)
-    if gaps and iteration < 2:
+    loops = max_gap_loops()
+    if gaps and iteration < loops:
         return {
             **state,
             "gaps": gaps,

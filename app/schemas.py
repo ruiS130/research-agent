@@ -21,8 +21,11 @@ AgentStatus = Literal[
 class ResearchRequest(BaseModel):
     topic: str = Field(..., min_length=3, max_length=2000)
     use_past_research: bool = Field(
-        default=True,
-        description="Query ChromaDB for related past sessions before planning",
+        default=False,
+        description=(
+            "Query ChromaDB for related past sessions before planning "
+            "(ignored in COST_MODE=min, which skips the planner LLM)"
+        ),
     )
 
 

@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 # Must set before importing app.main (lifespan checks key)
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-not-real")
 os.environ.setdefault("SEARCH_PROVIDER", "ddg")
+os.environ.setdefault("COST_MODE", "min")
+os.environ.setdefault("ANTHROPIC_MODEL", "claude-3-5-haiku-20241022")
 
 
 @pytest.fixture()

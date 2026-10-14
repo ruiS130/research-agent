@@ -43,12 +43,17 @@ if STATIC_DIR.is_dir():
 
 @app.get("/health")
 async def health():
+    from app.agent.settings import anthropic_model, cost_mode, max_gap_loops
+
     chroma_dir = os.getenv("CHROMA_PERSIST_DIR", "./chroma_data")
     return {
         "status": "ok",
         "anthropic_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
         "chroma_persist_dir": chroma_dir,
         "search_provider": (os.getenv("SEARCH_PROVIDER") or "ddg").lower(),
+        "cost_mode": cost_mode(),
+        "anthropic_model": anthropic_model(),
+        "max_gap_loops": max_gap_loops(),
     }
 
 

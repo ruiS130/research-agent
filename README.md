@@ -61,7 +61,7 @@ If the browser shows `ERR_CONNECTION_REFUSED`, nothing is listening on that port
 ```bash
 curl -X POST http://localhost:8000/research \
   -H "Content-Type: application/json" \
-  -d '{"topic": "Latest advances in solid-state batteries", "use_past_research": true}'
+  -d '{"topic": "Latest advances in solid-state batteries", "use_past_research": false}'
 ```
 
 ### Poll result
@@ -109,10 +109,34 @@ app/
 tests/              # pytest suite
 ```
 
+## Cost mode (default: minimum API spend)
+
+By default the agent uses **`COST_MODE=min`**: about **one** Anthropic call per research job.
+
+| Setting | `min` (default) | `full` |
+|---------|-----------------|--------|
+| Model | Haiku (`ANTHROPIC_MODEL`) | Same env, or set Sonnet yourself |
+| Plan | No LLM — search the topic as-is | Claude plans 1–N sub-questions |
+| Extract | Snippets only (no page LLM) | Fetch pages + Claude per source |
+| Synthesize | 1 short Haiku brief (~1k tokens max) | Longer report |
+| Gap loop | Off (0 extra searches) | Up to 2 re-search loops |
+
+```bash
+# .env — thrifty (default)
+COST_MODE=min
+ANTHROPIC_MODEL=claude-3-5-haiku-20241022
+
+# richer / more expensive
+COST_MODE=full
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
+```
+
+`GET /health` reports `cost_mode` and `anthropic_model`.
+
 ## Notes
 
 - Web search defaults to DuckDuckGo HTML (no extra API key). Set `SEARCH_PROVIDER=tavily` or `serper` (with the matching API key) for a more reliable provider; if DuckDuckGo returns nothing or errors, Tavily/Serper are tried when keys are set.
-- Claude model: `claude-sonnet-4-20250514` with 3 retries and exponential backoff.
+- Claude calls retry up to 3 times with exponential backoff.
 - Research reports persist in Chroma under `CHROMA_PERSIST_DIR` (default `./chroma_data`).
 - **Job id equals Chroma `session_id`.**
 - Job lookup order after restart: in-memory → **Chroma** (completed) → **SQLite** (create snapshot; may still say `pending` until live upserts land).
