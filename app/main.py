@@ -71,3 +71,16 @@ async def do_next_page():
     if not page.is_file():
         return {"message": "Do-next page not found."}
     return FileResponse(page)
+
+
+@app.get("/report/{job_id}")
+async def report_page_stub(job_id: str):
+    """Placeholder for a dedicated report page — not implemented yet (see /do-next)."""
+    page = STATIC_DIR / "report.html"
+    if not page.is_file():
+        return {
+            "message": "Report page not finished yet",
+            "job_id": job_id,
+            "see": "/do-next",
+        }
+    return FileResponse(page)

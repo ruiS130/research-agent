@@ -91,27 +91,43 @@
     </article>
 
     <article class="item">
+      <span class="badge wip">Planned · stub only</span>
+      <h2>2. Separate report page</h2>
+      <p>
+        Today the report only appears inline on <code>/</code>. Goal: a shareable
+        <code>/report/{id}</code> page for demos (topic, markdown, sources, link back).
+      </p>
+      <ul>
+        <li><strong>Done (stub):</strong> route <code>GET /report/{job_id}</code> + placeholder <code>report.html</code></li>
+        <li><strong>Not done:</strong> load job via <code>GET /research/{id}</code> or <code>/history/{id}</code></li>
+        <li><strong>Not done:</strong> render markdown + sources list</li>
+        <li><strong>Not done:</strong> “Open report” from home/history; copy-link / download .md</li>
+        <li><strong>Not done:</strong> in-progress state (redirect to home or show “still running”)</li>
+      </ul>
+    </article>
+
+    <article class="item">
       <span class="badge todo">Todo</span>
-      <h2>2. Deploy story</h2>
+      <h2>3. Deploy story</h2>
       <p>Dockerfile + short run-anywhere docs so demos aren’t laptop-only.</p>
     </article>
 
     <article class="item">
       <span class="badge todo">Todo</span>
-      <h2>3. Auth + rate limit</h2>
+      <h2>4. Auth + rate limit</h2>
       <p>Simple API key (or basic login) before exposing beyond localhost.</p>
     </article>
 
     <article class="item">
       <span class="badge todo">Todo</span>
-      <h2>4. Observability</h2>
+      <h2>5. Observability</h2>
       <p>Structured logs with <code>job_id</code>, per-node timing, rough token/cost.</p>
     </article>
 
     <article class="item">
       <span class="badge todo">Todo</span>
-      <h2>5. UI polish</h2>
-      <p>Live sources/gaps, cancel button, download markdown.</p>
+      <h2>6. UI polish</h2>
+      <p>Live sources/gaps, cancel button, download markdown (pairs with report page).</p>
     </article>
 
     <article class="item">

@@ -50,6 +50,7 @@ If the browser shows `ERR_CONNECTION_REFUSED`, nothing is listening on that port
 | GET | `/health` | Health check |
 | GET | `/` | Demo UI |
 | GET | `/do-next` | Roadmap page (mirror of README TODO) |
+| GET | `/report/{id}` | Report page (**stub only** — not finished) |
 | POST | `/research` | Start a research job |
 | GET | `/research/{id}` | Poll status (memory → Chroma → SQLite) |
 | GET | `/research/{id}/stream` | SSE progress events |
@@ -90,8 +91,9 @@ app/
   main.py           # FastAPI app, / and /do-next, lifespan (Chroma + SQLite init)
   schemas.py        # Pydantic models
   static/
-    index.html      # Demo UI
+    index.html      # Demo UI (report still inline here)
     do-next.html    # In-browser roadmap (optional; README is source of truth when undeployed)
+    report.html     # Dedicated report page stub (not finished)
   jobs/
     store.py        # SQLite job store (partial: create/get only)
   agent/
@@ -150,6 +152,7 @@ ANTHROPIC_MODEL=claude-sonnet-4-20250514
 - **Tests** — `pytest` with mocked Claude/search (`requirements-dev.txt`).
 - **`/do-next` page** — in-app roadmap; this README section is the offline copy.
 - **Partial durable jobs** — `app/jobs/store.py`: schema, `create_job` / `get_job`; new jobs written on `POST /research`. Mid-run status upserts and removing `_jobs` are still open (below).
+- **Report page stub** — `GET /report/{id}` serves a placeholder; full page not built yet (plan below).
 
 ## TODO / roadmap
 
@@ -164,6 +167,7 @@ Readable here without running the server. The `/do-next` page shows the same lis
 - [x] pytest suite with mocked Claude/search
 - [x] Optional search provider (Tavily/Serper) fallback
 - [x] `/do-next` roadmap page (also documented in this README)
+- [x] Min-cost mode (`COST_MODE=min`, ~1 Haiku call/job)
 
 ### In progress — durable in-flight jobs (SQLite)
 
@@ -173,6 +177,23 @@ Readable here without running the server. The `/do-next` page shows the same lis
 - [ ] Mark interrupted jobs on process start
 - [ ] Drop in-memory `_jobs` dict (SQLite as source of truth while running)
 - [ ] (Later) Resume a mid-pipeline LangGraph run after crash
+
+### Planned — separate report page (not finished)
+
+**Why:** Demos need a shareable URL (“here’s the report”) instead of only the inline panel on `/`.
+
+**Target URL:** `/report/{job_id}` (same id as Chroma `session_id`).
+
+| Step | Status | Notes |
+|------|--------|--------|
+| Route + placeholder HTML | Done (stub) | `GET /report/{id}` → `static/report.html` |
+| Fetch job/report JSON | Not done | Use existing `GET /research/{id}` and/or `GET /history/{id}` |
+| Render markdown + sources | Not done | marked.js (or similar), sources list with links |
+| Wire from home / history | Not done | “Open report” → `/report/{id}` after `done` |
+| In-progress / missing job | Not done | Show “still running” or 404 / link back to `/` |
+| Share extras | Not done | Copy link, download `.md` (optional) |
+
+Until this ships, keep showing the report on the home UI.
 
 ### Next
 
