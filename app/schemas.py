@@ -15,6 +15,7 @@ AgentStatus = Literal[
     "error",
     "pending",
     "running",
+    "interrupted",
 ]
 
 
@@ -47,6 +48,14 @@ class ResearchStatusResponse(BaseModel):
     created_at: datetime | None = None
     completed_at: datetime | None = None
     last_node: str | None = None
+    timing: dict = Field(
+        default_factory=dict,
+        description="Per-node elapsed time in milliseconds",
+    )
+    cost: dict = Field(
+        default_factory=dict,
+        description="Token usage and estimated_usd for the job",
+    )
 
 
 class HistoryItem(BaseModel):

@@ -2,14 +2,20 @@
 
 Multi-step AI research agent: **FastAPI** + **LangGraph** + **Claude** + **ChromaDB**.
 
+## Summary
+
+Local research agent: topic in → web search → markdown report with sources → live SSE progress on `/` → finished work stored in **Chroma** (RAG/history). Orchestrated as a LangGraph pipeline (plan → search → extract → synthesize → gap_check → done). Default **`COST_MODE=min`** ≈ one Haiku call per job; set **`COST_MODE=full`** for the full agentic loop. **Job status is durable in SQLite** (upsert every node; in-flight jobs marked `interrupted` on restart). Structured logs include `job_id`, per-node timing, and estimated USD cost. Dedicated **`/report/{id}`** is still a stub (report shows inline on home).
+
+**Next steps:** (1) auth + rate limits, (2) Docker / deploy, (3) evals for non-deterministic output, (4) finish shareable report page + UI polish. Full checklist: [TODO / roadmap](#todo--roadmap).
+
 ## Architecture
 
 ```
-plan → search → extract → synthesize → gap_check ─┬─→ search (max 2 loops)
+plan → search → extract → synthesize → gap_check ─┬─→ search (max 2 loops in full mode)
                                                    └─→ done → ChromaDB
 ```
 
-While a job runs, status also lives in memory (and a **partial** SQLite row on create). See [TODO / roadmap](#todo--roadmap).
+Job status is stored in SQLite (`JOBS_DB_PATH`); Chroma holds completed reports for RAG/history.
 
 ## Setup
 
@@ -52,7 +58,7 @@ If the browser shows `ERR_CONNECTION_REFUSED`, nothing is listening on that port
 | GET | `/do-next` | Roadmap page (mirror of README TODO) |
 | GET | `/report/{id}` | Report page (**stub only** — not finished) |
 | POST | `/research` | Start a research job |
-| GET | `/research/{id}` | Poll status (memory → Chroma → SQLite) |
+| GET | `/research/{id}` | Poll status (SQLite → Chroma fallback) |
 | GET | `/research/{id}/stream` | SSE progress events |
 | GET | `/history?q=...` | List or search past sessions |
 | GET | `/history/{session_id}` | Full stored report for a session |
@@ -95,7 +101,8 @@ app/
     do-next.html    # In-browser roadmap (optional; README is source of truth when undeployed)
     report.html     # Dedicated report page stub (not finished)
   jobs/
-    store.py        # SQLite job store (partial: create/get only)
+    store.py        # Durable SQLite jobs (upsert + interrupt-on-boot)
+  observability.py  # JSON logs, token/cost tracking
   agent/
     state.py        # TypedDict state
     graph.py        # LangGraph wiring
@@ -141,7 +148,9 @@ ANTHROPIC_MODEL=claude-sonnet-4-20250514
 - Claude calls retry up to 3 times with exponential backoff.
 - Research reports persist in Chroma under `CHROMA_PERSIST_DIR` (default `./chroma_data`).
 - **Job id equals Chroma `session_id`.**
-- Job lookup order after restart: in-memory → **Chroma** (completed) → **SQLite** (create snapshot; may still say `pending` until live upserts land).
+- Job lookup: **SQLite** first, then Chroma for older completed sessions.
+- On startup, non-terminal SQLite jobs are marked **`interrupted`** (pipeline does not auto-resume).
+- Observability: stdout JSON logs (`job_created`, `node_finished`, `job_completed`) with `job_id`, per-node `timing` (ms), and `cost` (`input_tokens`, `output_tokens`, `api_calls`, `estimated_usd`). Same fields on `GET /research/{id}`.
 - SQLite path: `JOBS_DB_PATH` (default `./data/jobs.db`, gitignored).
 
 ## Recent changes (local, not requiring deploy)
@@ -151,7 +160,8 @@ ANTHROPIC_MODEL=claude-sonnet-4-20250514
 - **Search fallback** — optional Tavily/Serper when DDG fails (see `.env.example`).
 - **Tests** — `pytest` with mocked Claude/search (`requirements-dev.txt`).
 - **`/do-next` page** — in-app roadmap; this README section is the offline copy.
-- **Partial durable jobs** — `app/jobs/store.py`: schema, `create_job` / `get_job`; new jobs written on `POST /research`. Mid-run status upserts and removing `_jobs` are still open (below).
+- **Durable SQLite jobs** — upsert on every node; no in-memory `_jobs`; interrupt non-terminal jobs on boot.
+- **Observability** — structured logs + `timing` / `cost` on job status responses.
 - **Report page stub** — `GET /report/{id}` serves a placeholder; full page not built yet (plan below).
 
 ## TODO / roadmap
@@ -169,14 +179,19 @@ Readable here without running the server. The `/do-next` page shows the same lis
 - [x] `/do-next` roadmap page (also documented in this README)
 - [x] Min-cost mode (`COST_MODE=min`, ~1 Haiku call/job)
 
-### In progress — durable in-flight jobs (SQLite)
+### Done — durable in-flight jobs (SQLite)
 
-- [x] Schema + `init_db` / `create_job` / `get_job` (`app/jobs/store.py`)
-- [x] Persist job on `POST /research`; resolve can read SQLite
-- [ ] Upsert status / `last_node` / report on every graph node update
-- [ ] Mark interrupted jobs on process start
-- [ ] Drop in-memory `_jobs` dict (SQLite as source of truth while running)
+- [x] Schema + `init_db` / `create_job` / `get_job` / `save_job`
+- [x] Upsert status / `last_node` / report / timing / cost on every graph node update
+- [x] Mark interrupted jobs on process start
+- [x] Drop in-memory `_jobs` dict (SQLite is source of truth)
 - [ ] (Later) Resume a mid-pipeline LangGraph run after crash
+
+### Done — observability
+
+- [x] Structured JSON logs with `job_id`
+- [x] Per-node timing (ms) on job status + logs
+- [x] Per-job token usage + `estimated_usd` (model rate table / env overrides)
 
 ### Planned — separate report page (not finished)
 
@@ -195,9 +210,9 @@ Readable here without running the server. The `/do-next` page shows the same lis
 
 Until this ships, keep showing the report on the home UI.
 
-### Next
+### Next (priority order)
 
+- [ ] Auth + rate limit (before any public URL)
 - [ ] Deploy story (Dockerfile + short run-anywhere docs)
-- [ ] Auth + rate limit (API key or basic login before public expose)
-- [ ] Observability (structured logs with `job_id`, per-node timing, cost)
-- [ ] UI polish (live sources/gaps, cancel, download markdown)
+- [ ] Evals for non-deterministic output (source-count, URL checks, coverage)
+- [ ] Finish report page + UI polish (shareable demo last)

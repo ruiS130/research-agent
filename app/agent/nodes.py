@@ -33,7 +33,9 @@ async def call_claude(
     user: str,
     max_tokens: int = 1024,
 ) -> str:
-    """Claude call with 3 retries and exponential backoff."""
+    """Claude call with 3 retries and exponential backoff; records token usage."""
+    from app.observability import record_api_usage
+
     client = _client()
     delays = [1.0, 2.0, 4.0]
     last_error: Exception | None = None
@@ -47,6 +49,12 @@ async def call_claude(
                 system=system,
                 messages=[{"role": "user", "content": user}],
             )
+            usage = getattr(message, "usage", None)
+            if usage is not None:
+                record_api_usage(
+                    int(getattr(usage, "input_tokens", 0) or 0),
+                    int(getattr(usage, "output_tokens", 0) or 0),
+                )
             parts = [
                 block.text
                 for block in message.content

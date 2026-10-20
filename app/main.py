@@ -20,10 +20,14 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 async def lifespan(app: FastAPI):
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise RuntimeError("ANTHROPIC_API_KEY is required (see .env.example)")
-    # Partial durable jobs: ensure SQLite schema exists (full cutover still TODO)
-    from app.jobs.store import init_db
+    from app.jobs.store import init_db, mark_interrupted_jobs
+    from app.observability import configure_logging, log_event
 
+    configure_logging()
     init_db()
+    n = mark_interrupted_jobs()
+    if n:
+        log_event("jobs_interrupted_on_startup", count=n)
     yield
 
 

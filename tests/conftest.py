@@ -35,14 +35,7 @@ def chroma_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture()
 def client(chroma_tmp, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
-    # Import after env is set; clear job registry between tests
-    from app.routers import research as research_router
-
-    research_router._jobs.clear()
-
     from app.main import app
 
     with TestClient(app) as c:
         yield c
-
-    research_router._jobs.clear()

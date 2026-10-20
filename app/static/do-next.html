@@ -70,73 +70,60 @@
     <p class="nav"><a href="/">← Research UI</a> · <a href="/docs">API docs</a></p>
     <h1>Do next</h1>
     <p class="lede">
-      Roadmap after the demo/reliability pass. Item 1 is started — not finished.
-      API spend defaults to <code>COST_MODE=min</code> (≈1 Haiku call/job); see README.
+      Priority roadmap. Durable SQLite jobs + observability are shipped.
+      API spend defaults to <code>COST_MODE=min</code>; see README.
     </p>
 
     <article class="item">
-      <span class="badge wip">In progress · partial</span>
+      <span class="badge done">Done</span>
       <h2>1. Durable in-flight jobs (SQLite)</h2>
       <p>
-        Persist job rows so status survives process restart — not only completed
-        Chroma reports.
+        SQLite is the source of truth: upsert on every node, mark
+        <code>interrupted</code> on boot, no in-memory <code>_jobs</code> dict.
       </p>
-      <ul>
-        <li><strong>Done:</strong> <code>app/jobs/store.py</code> schema, <code>create_job</code>, <code>get_job</code></li>
-        <li><strong>Done:</strong> new jobs written to SQLite on <code>POST /research</code>; resolve also reads SQLite</li>
-        <li><strong>Not done:</strong> write status on every graph node update</li>
-        <li><strong>Not done:</strong> mark interrupted jobs on boot; remove in-memory <code>_jobs</code></li>
-        <li><strong>Not done:</strong> resume a mid-pipeline LangGraph run after crash</li>
-      </ul>
+    </article>
+
+    <article class="item">
+      <span class="badge done">Done</span>
+      <h2>2. Observability</h2>
+      <p>
+        JSON logs with <code>job_id</code>, per-node timing, token usage and
+        <code>estimated_usd</code> (also on <code>GET /research/{id}</code>).
+      </p>
+    </article>
+
+    <article class="item">
+      <span class="badge todo">Next</span>
+      <h2>3. Auth + rate limit</h2>
+      <p>Protect the Anthropic key before any public demo URL.</p>
+    </article>
+
+    <article class="item">
+      <span class="badge todo">Todo</span>
+      <h2>4. Deploy (Docker)</h2>
+      <p>After auth — Dockerfile + short run-anywhere docs.</p>
+    </article>
+
+    <article class="item">
+      <span class="badge todo">Todo</span>
+      <h2>5. Evals (non-deterministic)</h2>
+      <p>
+        Small topic set checking source count, URL validity, coverage —
+        beyond mocked plumbing tests.
+      </p>
     </article>
 
     <article class="item">
       <span class="badge wip">Planned · stub only</span>
-      <h2>2. Separate report page</h2>
+      <h2>6. Separate report page + UI polish</h2>
       <p>
-        Today the report only appears inline on <code>/</code>. Goal: a shareable
-        <code>/report/{id}</code> page for demos (topic, markdown, sources, link back).
+        Shareable <code>/report/{id}</code> (stub exists). Do last for demos;
+        least hiring impact vs auth/evals.
       </p>
       <ul>
-        <li><strong>Done (stub):</strong> route <code>GET /report/{job_id}</code> + placeholder <code>report.html</code></li>
-        <li><strong>Not done:</strong> load job via <code>GET /research/{id}</code> or <code>/history/{id}</code></li>
-        <li><strong>Not done:</strong> render markdown + sources list</li>
-        <li><strong>Not done:</strong> “Open report” from home/history; copy-link / download .md</li>
-        <li><strong>Not done:</strong> in-progress state (redirect to home or show “still running”)</li>
+        <li><strong>Done (stub):</strong> <code>GET /report/{job_id}</code> placeholder</li>
+        <li><strong>Not done:</strong> load JSON, render markdown + sources, wire from home</li>
       </ul>
-    </article>
-
-    <article class="item">
-      <span class="badge todo">Todo</span>
-      <h2>3. Deploy story</h2>
-      <p>Dockerfile + short run-anywhere docs so demos aren’t laptop-only.</p>
-    </article>
-
-    <article class="item">
-      <span class="badge todo">Todo</span>
-      <h2>4. Auth + rate limit</h2>
-      <p>Simple API key (or basic login) before exposing beyond localhost.</p>
-    </article>
-
-    <article class="item">
-      <span class="badge todo">Todo</span>
-      <h2>5. Observability</h2>
-      <p>Structured logs with <code>job_id</code>, per-node timing, rough token/cost.</p>
-    </article>
-
-    <article class="item">
-      <span class="badge todo">Todo</span>
-      <h2>6. UI polish</h2>
-      <p>Live sources/gaps, cancel button, download markdown (pairs with report page).</p>
-    </article>
-
-    <article class="item">
-      <span class="badge done">Shipped</span>
-      <h2>Earlier round</h2>
-      <p>
-        SSE progress, demo UI, Chroma recovery for completed jobs,
-        <code>GET /history/{id}</code>, pytest suite, search provider fallback.
-      </p>
     </article>
   </div>
 </body>

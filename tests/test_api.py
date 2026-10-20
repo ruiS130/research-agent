@@ -120,7 +120,6 @@ def test_research_job_lifecycle(client):
         {"key_points": ["Point"], "relevance_score": 0.8}
     )
     report = "## Executive summary\n\nDone.\n"
-    gap_out = json.dumps({"gaps": [], "refined_queries": []})
 
     async def fake_claude(system: str, user: str, max_tokens: int = 4096) -> str:
         lower = system.lower()
@@ -128,9 +127,9 @@ def test_research_job_lifecycle(client):
             return plan_out
         if "extract key findings" in lower:
             return extract_out
-        if "synthesizer" in lower:
+        if "synthesizer" in lower or "research brief" in lower:
             return report
-        return gap_out
+        return report
 
     async def fake_search(query: str, max_results: int = 5):
         return [
@@ -157,32 +156,22 @@ def test_research_job_lifecycle(client):
         assert start.status_code == 200
         job_id = start.json()["id"]
 
-        # BackgroundTasks run after response with TestClient
         status = client.get(f"/research/{job_id}")
         assert status.status_code == 200
         body = status.json()
         assert body["id"] == job_id
-        assert body["status"] in {"done", "error", "planning", "searching", "extracting", "synthesizing", "checking", "pending"}
-        # With TestClient, background task should have completed
         assert body["status"] == "done"
         assert body["report"]
         assert body.get("last_node") == "done"
+        assert "cost" in body
+        assert "timing" in body
 
 
-def test_chroma_recovery_after_job_cleared(client):
-    plan_out = json.dumps(["Q1?"])
-    extract_out = json.dumps({"key_points": ["K"], "relevance_score": 0.7})
+def test_sqlite_survives_without_memory_dict(client):
+    """Jobs persist in SQLite — no in-memory _jobs registry."""
     report = "Recovered report body"
-    gap_out = json.dumps({"gaps": [], "refined_queries": []})
 
     async def fake_claude(system: str, user: str, max_tokens: int = 4096) -> str:
-        lower = system.lower()
-        if "planner" in lower:
-            return plan_out
-        if "extract key findings" in lower:
-            return extract_out
-        if "synthesizer" in lower or "research brief" in lower:
-            return report
         return report
 
     with (
@@ -192,7 +181,7 @@ def test_chroma_recovery_after_job_cleared(client):
             new=AsyncMock(
                 return_value=[
                     {
-                        "query": "Q1?",
+                        "query": "q",
                         "url": "https://example.com/c",
                         "title": "C",
                         "snippet": "s",
@@ -212,9 +201,12 @@ def test_chroma_recovery_after_job_cleared(client):
         job_id = start.json()["id"]
         assert client.get(f"/research/{job_id}").json()["status"] == "done"
 
-    from app.routers import research as research_router
+    from app.jobs.store import get_job
 
-    research_router._jobs.clear()
+    row = get_job(job_id)
+    assert row is not None
+    assert row["status"] == "done"
+    assert "Recovered report" in (row.get("report") or "")
 
     recovered = client.get(f"/research/{job_id}")
     assert recovered.status_code == 200
@@ -224,3 +216,9 @@ def test_chroma_recovery_after_job_cleared(client):
     detail = client.get(f"/history/{job_id}")
     assert detail.status_code == 200
     assert detail.json()["topic"] == "recovery topic"
+
+
+def test_no_in_memory_jobs_dict():
+    from app.routers import research as research_router
+
+    assert not hasattr(research_router, "_jobs")

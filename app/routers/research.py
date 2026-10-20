@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 import traceback
 import uuid
 from datetime import datetime, timezone
@@ -10,18 +11,23 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.agent.graph import research_graph
+from app.agent.settings import anthropic_model, cost_mode
 from app.agent.state import initial_state
-from app.jobs.store import create_job, get_job
+from app.jobs.store import create_job, get_job, save_job
+from app.observability import (
+    begin_job_metrics,
+    end_job_metrics,
+    get_job_metrics,
+    log_event,
+    set_current_job,
+)
 from app.rag.retriever import format_sources_for_response
 from app.rag.store import get_session_by_id
 from app.schemas import ResearchJobResponse, ResearchRequest, ResearchStatusResponse
 
 router = APIRouter(prefix="/research", tags=["research"])
 
-# In-memory job registry (reports also persist in Chroma)
-_jobs: dict[str, dict] = {}
-
-_TERMINAL = frozenset({"done", "error"})
+_TERMINAL = frozenset({"done", "error", "interrupted"})
 
 
 def _now() -> datetime:
@@ -40,6 +46,8 @@ def _job_to_response(job: dict) -> ResearchStatusResponse:
         created_at=job.get("created_at"),
         completed_at=job.get("completed_at"),
         last_node=job.get("last_node"),
+        timing=job.get("timing") or {},
+        cost=job.get("cost") or {},
     )
 
 
@@ -62,25 +70,27 @@ def _session_to_job(session: dict) -> dict:
         "created_at": created_at,
         "completed_at": created_at,
         "last_node": "done",
+        "event_seq": 0,
+        "timing": {},
+        "cost": {},
     }
 
 
 def _resolve_job(job_id: str) -> dict | None:
-    job = _jobs.get(job_id)
-    if job:
-        return job
-    # Prefer Chroma when present (completed report). SQLite create-only rows
-    # may still say "pending" until we wire live upserts (/do-next item 1).
-    session = get_session_by_id(job_id)
-    if session:
-        recovered = _session_to_job(session)
-        _jobs[job_id] = recovered
-        return recovered
+    """SQLite is source of truth; Chroma fills in older completed sessions."""
     persisted = get_job(job_id)
     if persisted:
-        _jobs[job_id] = persisted
         return persisted
-    return None
+    session = get_session_by_id(job_id)
+    if not session:
+        return None
+    recovered = _session_to_job(session)
+    save_job(recovered)
+    return recovered
+
+
+def _persist(job: dict) -> None:
+    save_job(job)
 
 
 @router.post("", response_model=ResearchJobResponse)
@@ -101,10 +111,17 @@ async def start_research(
         "completed_at": None,
         "last_node": None,
         "event_seq": 0,
+        "timing": {},
+        "cost": {},
     }
-    _jobs[job_id] = job
-    # Persist create only for now; live status updates still in-memory (see /do-next)
     create_job(job)
+    log_event(
+        "job_created",
+        job_id=job_id,
+        topic=body.topic,
+        cost_mode=cost_mode(),
+        model=anthropic_model(),
+    )
 
     background_tasks.add_task(_run_research, job_id, body.topic, body.use_past_research)
 
@@ -130,7 +147,6 @@ async def stream_research(job_id: str) -> StreamingResponse:
 
     async def event_generator():
         last_seq = -1
-        # Wait briefly for job creation if client connects immediately
         for _ in range(50):
             job = _resolve_job(job_id)
             if job:
@@ -160,6 +176,8 @@ async def stream_research(job_id: str) -> StreamingResponse:
                     "error": job.get("error"),
                     "report": job.get("report"),
                     "sources": job.get("sources") or [],
+                    "timing": job.get("timing") or {},
+                    "cost": job.get("cost") or {},
                 }
                 event_name = "done" if job["status"] in _TERMINAL else "progress"
                 yield f"event: {event_name}\ndata: {json.dumps(data)}\n\n"
@@ -180,18 +198,37 @@ async def stream_research(job_id: str) -> StreamingResponse:
 
 
 async def _run_research(job_id: str, topic: str, use_past_research: bool) -> None:
-    job = _jobs[job_id]
+    job = get_job(job_id)
+    if not job:
+        log_event("job_missing", job_id=job_id)
+        return
+
+    metrics = begin_job_metrics(
+        job_id, model=anthropic_model(), cost_mode=cost_mode()
+    )
+    set_current_job(job_id)
+
     job["status"] = "planning"
     job["last_node"] = None
-    job["event_seq"] = job.get("event_seq", 0) + 1
+    job["event_seq"] = int(job.get("event_seq") or 0) + 1
+    _persist(job)
+    log_event("job_started", job_id=job_id, topic=topic, cost_mode=cost_mode())
 
     state = initial_state(job_id, topic, use_past_research=use_past_research)
     final = dict(state)
 
     try:
+        # Wall time between astream yields ≈ per-node duration.
+        prev_t = time.perf_counter()
         async for event in research_graph.astream(state, stream_mode="updates"):
+            now_t = time.perf_counter()
+            elapsed_ms = (now_t - prev_t) * 1000.0
+            prev_t = now_t
             for node_name, partial in event.items():
                 final.update(partial)
+                metrics.record_node(node_name, elapsed_ms)
+
+                job = get_job(job_id) or job
                 job["last_node"] = node_name
                 job["status"] = partial.get("status", job["status"])
                 if partial.get("report"):
@@ -202,8 +239,21 @@ async def _run_research(job_id: str, topic: str, use_past_research: bool) -> Non
                     job["sources"] = format_sources_for_response(
                         partial["extracted_findings"]
                     )
-                job["event_seq"] = job.get("event_seq", 0) + 1
+                job["event_seq"] = int(job.get("event_seq") or 0) + 1
+                job["timing"] = metrics.to_timing_dict()
+                job["cost"] = metrics.to_cost_dict()
+                _persist(job)
+                log_event(
+                    "node_finished",
+                    job_id=job_id,
+                    node=node_name,
+                    status=job["status"],
+                    elapsed_ms=round(elapsed_ms, 2),
+                    api_calls=metrics.api_calls,
+                    estimated_usd=metrics.to_cost_dict()["estimated_usd"],
+                )
 
+        job = get_job(job_id) or job
         job["status"] = final.get("status", "done")
         job["report"] = final.get("report")
         job["gaps"] = final.get("gaps", [])
@@ -212,11 +262,34 @@ async def _run_research(job_id: str, topic: str, use_past_research: bool) -> Non
         )
         job["last_node"] = "done"
         job["completed_at"] = _now()
-        job["event_seq"] = job.get("event_seq", 0) + 1
+        job["event_seq"] = int(job.get("event_seq") or 0) + 1
+        job["timing"] = metrics.to_timing_dict()
+        job["cost"] = metrics.to_cost_dict()
+        _persist(job)
+        log_event(
+            "job_completed",
+            job_id=job_id,
+            status=job["status"],
+            **metrics.to_cost_dict(),
+            timing=metrics.to_timing_dict(),
+        )
     except Exception as exc:
+        job = get_job(job_id) or job
         job["status"] = "error"
         job["error"] = str(exc)
         job["last_node"] = "error"
         job["completed_at"] = _now()
-        job["event_seq"] = job.get("event_seq", 0) + 1
+        job["event_seq"] = int(job.get("event_seq") or 0) + 1
+        job["timing"] = metrics.to_timing_dict()
+        job["cost"] = metrics.to_cost_dict()
+        _persist(job)
+        log_event(
+            "job_failed",
+            job_id=job_id,
+            error=str(exc),
+            **metrics.to_cost_dict(),
+        )
         traceback.print_exc()
+    finally:
+        end_job_metrics(job_id)
+        set_current_job(None)
