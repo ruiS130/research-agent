@@ -133,11 +133,11 @@ By default the agent uses **`COST_MODE=min`**: about **one** Anthropic call per 
 ```bash
 # .env — thrifty (default)
 COST_MODE=min
-ANTHROPIC_MODEL=claude-3-5-haiku-20241022
+ANTHROPIC_MODEL=claude-haiku-5-5
 
 # richer / more expensive
 COST_MODE=full
-ANTHROPIC_MODEL=claude-sonnet-4-20250514
+ANTHROPIC_MODEL=claude-sonnet-5-5
 ```
 
 `GET /health` reports `cost_mode` and `anthropic_model`.

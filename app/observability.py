@@ -14,9 +14,11 @@ _current_job_id: ContextVar[str | None] = ContextVar("current_job_id", default=N
 
 # Rough USD per 1M tokens (override via env). Defaults approximate public list prices.
 _DEFAULT_RATES: dict[str, tuple[float, float]] = {
-    # (input_per_mtok, output_per_mtok)
+    # (input_per_mtok, output_per_mtok) — approximate list prices
+    "claude-haiku-5-5": (0.10, 0.50),
     "claude-3-5-haiku-20241022": (0.80, 4.00),
     "claude-haiku-4-5-20251001": (1.00, 5.00),
+    "claude-sonnet-5-5": (2.00, 10.00),
     "claude-sonnet-4-20250514": (3.00, 15.00),
     "claude-3-5-sonnet-20241022": (3.00, 15.00),
 }

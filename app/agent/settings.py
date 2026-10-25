@@ -17,7 +17,7 @@ def is_min_cost() -> bool:
 
 def anthropic_model() -> str:
     # Haiku by default — much cheaper than Sonnet.
-    return os.getenv("ANTHROPIC_MODEL") or "claude-3-5-haiku-20241022"
+    return os.getenv("ANTHROPIC_MODEL") or "claude-haiku-5-5"
 
 
 def max_gap_loops() -> int:
