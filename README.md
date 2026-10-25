@@ -6,7 +6,7 @@ Multi-step AI research agent: **FastAPI** + **LangGraph** + **Claude** + **Chrom
 
 Local research agent: topic in → web search → markdown report with sources → live SSE progress on `/` → finished work stored in **Chroma** (RAG/history). Orchestrated as a LangGraph pipeline (plan → search → extract → synthesize → gap_check → done). Default **`COST_MODE=min`** ≈ one Haiku call per job; set **`COST_MODE=full`** for the full agentic loop. **Job status is durable in SQLite** (upsert every node; in-flight jobs marked `interrupted` on restart). Structured logs include `job_id`, per-node timing, per-node token usage, and estimated USD cost. A Haiku 5.5 prompt that could exceed 100K input tokens is flagged (the whole request bills at 5× above that). Dedicated **`/report/{id}`** is still a stub (report shows inline on home).
 
-**Next steps:** (1) auth + rate limits, (2) Docker / deploy, (3) evals for non-deterministic output, (4) finish shareable report page + UI polish. Full checklist: [TODO / roadmap](#todo--roadmap).
+**Next steps:** (1) auth + rate limits, (2) Docker / deploy, (3) record a live eval baseline before prompt or model changes, (4) finish shareable report page + UI polish. Full checklist: [TODO / roadmap](#todo--roadmap).
 
 ## Architecture
 
@@ -115,6 +115,10 @@ app/
   routers/
     research.py     # Job endpoints + SSE
     history.py      # History endpoints
+  eval/
+    dataset.py      # 16 research questions + expected phrases
+    score.py        # facts, citation match, coverage
+    run.py          # python -m app.eval.run --live
 tests/              # pytest suite
 ```
 
@@ -141,6 +145,18 @@ ANTHROPIC_MODEL=claude-sonnet-5-5
 ```
 
 `GET /health` reports `cost_mode` and `anthropic_model`.
+
+## Evals
+
+Sixteen questions in `app/eval/dataset.py`. A report is scored on three things: factual phrases present, inline citations whose URLs are in the retrieved sources, and coverage of expected aspects. The check is lexical, so a true paraphrase can score low. Use it as a tripwire: if a change lowers the mean versus `eval_results/baseline.json`, revert it or leave it flagged.
+
+```bash
+python -m app.eval.run          # list the set; no API calls
+python -m app.eval.run --live --save-baseline
+python -m app.eval.run --live   # exits 1 when scores drop vs the baseline
+```
+
+Live runs spend `ANTHROPIC_API_KEY` credits. Results land in `eval_results/` (gitignored). Compare runs that use the same `COST_MODE` and model.
 
 ## Notes
 
@@ -215,5 +231,5 @@ Until this ships, keep showing the report on the home UI.
 
 - [ ] Auth + rate limit (before any public URL)
 - [ ] Deploy story (Dockerfile + short run-anywhere docs)
-- [ ] Evals for non-deterministic output (source-count, URL checks, coverage)
+- [x] Eval harness (16 questions: facts, citation match, coverage). Live baseline still to record before prompt/model changes
 - [ ] Finish report page + UI polish (shareable demo last)
