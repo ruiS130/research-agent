@@ -1,5 +1,6 @@
 """LangGraph node functions for each research pipeline step."""
 
+import functools
 import json
 import os
 import re
@@ -20,8 +21,33 @@ from app.agent.settings import (
 )
 from app.agent.state import ResearchState
 from app.agent.tools import fetch_page, store_to_rag, web_search
+from app.observability import bind_llm_node
 from app.rag.memory import get_past_context_for_topic
 from app.rag.retriever import format_sources_for_response
+
+
+def _llm_node(node: str):
+    """Tag Claude usage recorded inside this LangGraph node."""
+
+    def deco(fn):
+        @functools.wraps(fn)
+        async def wrapper(state: ResearchState) -> ResearchState:
+            with bind_llm_node(node):
+                return await fn(state)
+
+        return wrapper
+
+    return deco
+
+
+def _usage_field(usage: Any, key: str) -> int:
+    if usage is None:
+        return 0
+    value = usage.get(key, 0) if isinstance(usage, dict) else getattr(usage, key, 0)
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _client() -> anthropic.AsyncAnthropic:
@@ -34,12 +60,37 @@ async def call_claude(
     max_tokens: int = 1024,
 ) -> str:
     """Claude call with 3 retries and exponential backoff; records token usage."""
-    from app.observability import record_api_usage
+    from app.observability import (
+        current_llm_node,
+        estimate_input_tokens,
+        log_event,
+        long_context_input_threshold,
+        long_context_multiplier,
+        record_api_usage,
+    )
 
     client = _client()
     delays = [1.0, 2.0, 4.0]
     last_error: Exception | None = None
     model = anthropic_model()
+    estimated_input = estimate_input_tokens(system, user)
+    node = current_llm_node()
+    threshold = long_context_input_threshold()
+    if estimated_input >= threshold:
+        # Flag only. The request is still sent — this step measures, it does
+        # not change which calls run.
+        log_event(
+            "llm_long_context_risk",
+            node=node,
+            model=model,
+            estimated_input_tokens=estimated_input,
+            threshold=threshold,
+            detail=(
+                f"Estimated input is {estimated_input} tokens "
+                f"(threshold {threshold}). Haiku 5.5 bills the whole request at "
+                f"{long_context_multiplier():g}x when input exceeds that."
+            ),
+        )
 
     for attempt, delay in enumerate(delays, start=1):
         try:
@@ -50,11 +101,20 @@ async def call_claude(
                 messages=[{"role": "user", "content": user}],
             )
             usage = getattr(message, "usage", None)
-            if usage is not None:
-                record_api_usage(
-                    int(getattr(usage, "input_tokens", 0) or 0),
-                    int(getattr(usage, "output_tokens", 0) or 0),
-                )
+            record_api_usage(
+                _usage_field(usage, "input_tokens"),
+                _usage_field(usage, "output_tokens"),
+                node=node,
+                model=model,
+                estimated_input_tokens=estimated_input,
+                max_tokens=max_tokens,
+                cache_read_input_tokens=_usage_field(
+                    usage, "cache_read_input_tokens"
+                ),
+                cache_creation_input_tokens=_usage_field(
+                    usage, "cache_creation_input_tokens"
+                ),
+            )
             parts = [
                 block.text
                 for block in message.content
@@ -99,6 +159,7 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     return {}
 
 
+@_llm_node("plan")
 async def plan_node(state: ResearchState) -> ResearchState:
     topic = state["topic"]
     limit = max_sub_questions()
@@ -162,6 +223,7 @@ async def search_node(state: ResearchState) -> ResearchState:
     }
 
 
+@_llm_node("extract")
 async def extract_node(state: ResearchState) -> ResearchState:
     results = state.get("search_results") or []
     topic = state["topic"]
@@ -256,6 +318,7 @@ async def extract_node(state: ResearchState) -> ResearchState:
     }
 
 
+@_llm_node("synthesize")
 async def synthesize_node(state: ResearchState) -> ResearchState:
     topic = state["topic"]
     findings = state.get("extracted_findings") or []
@@ -297,6 +360,7 @@ async def synthesize_node(state: ResearchState) -> ResearchState:
     }
 
 
+@_llm_node("gap_check")
 async def gap_check_node(state: ResearchState) -> ResearchState:
     # Min-cost: skip gap LLM and never loop — one synthesize call is enough.
     if is_min_cost() or max_gap_loops() <= 0:

@@ -243,14 +243,20 @@ async def _run_research(job_id: str, topic: str, use_past_research: bool) -> Non
                 job["timing"] = metrics.to_timing_dict()
                 job["cost"] = metrics.to_cost_dict()
                 _persist(job)
+                node_usage = metrics.usage_for(node_name)
                 log_event(
                     "node_finished",
                     job_id=job_id,
                     node=node_name,
                     status=job["status"],
                     elapsed_ms=round(elapsed_ms, 2),
+                    input_tokens=node_usage["input_tokens"],
+                    output_tokens=node_usage["output_tokens"],
+                    node_api_calls=node_usage["api_calls"],
+                    node_estimated_usd=node_usage["estimated_usd"],
                     api_calls=metrics.api_calls,
-                    estimated_usd=metrics.to_cost_dict()["estimated_usd"],
+                    estimated_usd=job["cost"]["estimated_usd"],
+                    dominant_node=job["cost"]["dominant_node"],
                 )
 
         job = get_job(job_id) or job

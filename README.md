@@ -4,7 +4,7 @@ Multi-step AI research agent: **FastAPI** + **LangGraph** + **Claude** + **Chrom
 
 ## Summary
 
-Local research agent: topic in → web search → markdown report with sources → live SSE progress on `/` → finished work stored in **Chroma** (RAG/history). Orchestrated as a LangGraph pipeline (plan → search → extract → synthesize → gap_check → done). Default **`COST_MODE=min`** ≈ one Haiku call per job; set **`COST_MODE=full`** for the full agentic loop. **Job status is durable in SQLite** (upsert every node; in-flight jobs marked `interrupted` on restart). Structured logs include `job_id`, per-node timing, and estimated USD cost. Dedicated **`/report/{id}`** is still a stub (report shows inline on home).
+Local research agent: topic in → web search → markdown report with sources → live SSE progress on `/` → finished work stored in **Chroma** (RAG/history). Orchestrated as a LangGraph pipeline (plan → search → extract → synthesize → gap_check → done). Default **`COST_MODE=min`** ≈ one Haiku call per job; set **`COST_MODE=full`** for the full agentic loop. **Job status is durable in SQLite** (upsert every node; in-flight jobs marked `interrupted` on restart). Structured logs include `job_id`, per-node timing, per-node token usage, and estimated USD cost. A Haiku 5.5 prompt that could exceed 100K input tokens is flagged (the whole request bills at 5× above that). Dedicated **`/report/{id}`** is still a stub (report shows inline on home).
 
 **Next steps:** (1) auth + rate limits, (2) Docker / deploy, (3) evals for non-deterministic output, (4) finish shareable report page + UI polish. Full checklist: [TODO / roadmap](#todo--roadmap).
 
@@ -150,7 +150,7 @@ ANTHROPIC_MODEL=claude-sonnet-5-5
 - **Job id equals Chroma `session_id`.**
 - Job lookup: **SQLite** first, then Chroma for older completed sessions.
 - On startup, non-terminal SQLite jobs are marked **`interrupted`** (pipeline does not auto-resume).
-- Observability: stdout JSON logs (`job_created`, `node_finished`, `job_completed`) with `job_id`, per-node `timing` (ms), and `cost` (`input_tokens`, `output_tokens`, `api_calls`, `estimated_usd`). Same fields on `GET /research/{id}`.
+- Observability: stdout JSON logs (`job_created`, `llm_usage`, `node_finished`, `job_completed`) with `job_id`. Each Claude call logs `input_tokens` and `output_tokens` tagged by LangGraph node. `cost` on `GET /research/{id}` adds `nodes` (ranked by estimated USD), `dominant_node`, and `long_context_flags`. Haiku 5.5 input above 100K tokens is priced at 5× for that whole request (`llm_long_context`); a prompt whose estimate reaches the threshold is logged as `llm_long_context_risk` before the call.
 - SQLite path: `JOBS_DB_PATH` (default `./data/jobs.db`, gitignored).
 
 ## Recent changes (local, not requiring deploy)
@@ -192,6 +192,7 @@ Readable here without running the server. The `/do-next` page shows the same lis
 - [x] Structured JSON logs with `job_id`
 - [x] Per-node timing (ms) on job status + logs
 - [x] Per-job token usage + `estimated_usd` (model rate table / env overrides)
+- [x] Per-call `input_tokens` / `output_tokens` tagged by LangGraph node, plus Haiku 5.5 100K long-context flag
 
 ### Planned — separate report page (not finished)
 

@@ -54,7 +54,11 @@ class ResearchStatusResponse(BaseModel):
     )
     cost: dict = Field(
         default_factory=dict,
-        description="Token usage and estimated_usd for the job",
+        description=(
+            "Token usage and estimated_usd for the job, plus per-node "
+            "totals (nodes, dominant_node) and long_context_flags when a "
+            "prompt could exceed Haiku 5.5's 100K 5x threshold"
+        ),
     )
 
 
