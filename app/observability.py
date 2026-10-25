@@ -71,12 +71,14 @@ def _positive_float_env(name: str, default: float) -> float:
 def estimate_input_tokens(system: str, user: str) -> int:
     """Conservative token estimate for a system + user prompt.
 
-    English is often ~4 characters per token. JSON and dense source text run
-    closer to 3, so this uses 3 to flag prompts that *could* cross 100K
-    before the API bills them. A small overhead covers message framing.
+    A live Haiku 5.5 run tokenized fetched pages at about 2 characters per
+    input token. The usual 4-characters-per-token rule under-counted those
+    prompts by up to 1.5×, which would hide a 100K surcharge. This uses 2
+    so a prompt that could cross the line is flagged first. A small overhead
+    covers message framing.
     """
     chars = len(system or "") + len(user or "")
-    return (chars + 2) // 3 + _ESTIMATE_OVERHEAD_TOKENS
+    return (chars + 1) // 2 + _ESTIMATE_OVERHEAD_TOKENS
 
 
 def _is_haiku_55(model: str) -> bool:
@@ -137,6 +139,7 @@ class LlmCall:
     cache_read_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
     max_tokens: int | None = None
+    stop_reason: str | None = None
 
 
 def _make_call(
@@ -149,6 +152,7 @@ def _make_call(
     cache_read_input_tokens: int = 0,
     cache_creation_input_tokens: int = 0,
     max_tokens: int | None = None,
+    stop_reason: str | None = None,
 ) -> LlmCall:
     in_tok = max(0, input_tokens)
     out_tok = max(0, output_tokens)
@@ -172,6 +176,7 @@ def _make_call(
         cache_read_input_tokens=max(0, cache_read_input_tokens),
         cache_creation_input_tokens=max(0, cache_creation_input_tokens),
         max_tokens=max_tokens,
+        stop_reason=stop_reason,
     )
 
 
@@ -198,6 +203,7 @@ class JobMetrics:
         cache_read_input_tokens: int = 0,
         cache_creation_input_tokens: int = 0,
         max_tokens: int | None = None,
+        stop_reason: str | None = None,
     ) -> LlmCall:
         call = _make_call(
             node=node,
@@ -208,6 +214,7 @@ class JobMetrics:
             cache_read_input_tokens=cache_read_input_tokens,
             cache_creation_input_tokens=cache_creation_input_tokens,
             max_tokens=max_tokens,
+            stop_reason=stop_reason,
         )
         self.calls.append(call)
         self.input_tokens += call.input_tokens
@@ -238,10 +245,11 @@ class JobMetrics:
                     "api_calls": 0,
                     "estimated_usd": 0.0,
                     "max_input_tokens": 0,
-                    "max_estimated_input_tokens": 0,
-                    "long_context": False,
-                }
-                buckets[call.node] = bucket
+                "max_estimated_input_tokens": 0,
+                "long_context": False,
+                "truncated": False,
+            }
+            buckets[call.node] = bucket
             bucket["input_tokens"] += call.input_tokens
             bucket["output_tokens"] += call.output_tokens
             bucket["api_calls"] += 1
@@ -254,6 +262,8 @@ class JobMetrics:
             )
             if call.prompt_could_exceed or call.surcharge:
                 bucket["long_context"] = True
+            if call.stop_reason == "max_tokens":
+                bucket["truncated"] = True
         total = self.estimated_usd()
         rows: list[dict[str, Any]] = []
         for bucket in buckets.values():
@@ -284,6 +294,7 @@ class JobMetrics:
             "max_input_tokens": 0,
             "max_estimated_input_tokens": 0,
             "long_context": False,
+            "truncated": False,
         }
 
     def long_context_flags(self) -> list[dict[str, Any]]:
@@ -314,6 +325,22 @@ class JobMetrics:
                 )
         return flags
 
+    def truncated_calls(self) -> list[dict[str, Any]]:
+        """Calls that stopped because they hit max_tokens."""
+        flagged: list[dict[str, Any]] = []
+        for index, call in enumerate(self.calls):
+            if call.stop_reason != "max_tokens":
+                continue
+            flagged.append(
+                {
+                    "call_index": index,
+                    "node": call.node,
+                    "output_tokens": call.output_tokens,
+                    "max_tokens": call.max_tokens,
+                }
+            )
+        return flagged
+
     def to_cost_dict(self) -> dict[str, Any]:
         nodes = self.nodes_ranked()
         return {
@@ -327,6 +354,7 @@ class JobMetrics:
             "dominant_node": nodes[0]["node"] if nodes else None,
             "nodes": nodes,
             "long_context_flags": self.long_context_flags(),
+            "truncated_calls": self.truncated_calls(),
         }
 
     def to_timing_dict(self) -> dict[str, Any]:
@@ -401,6 +429,7 @@ def _log_llm_call(job_id: str | None, call: LlmCall) -> None:
         "estimated_usd": round(call.estimated_usd, 6),
         "long_context_surcharge": call.surcharge,
         "prompt_could_exceed_100k": call.prompt_could_exceed,
+        "stop_reason": call.stop_reason,
     }
     if job_id:
         fields["job_id"] = job_id
@@ -434,6 +463,7 @@ def record_api_usage(
     max_tokens: int | None = None,
     cache_read_input_tokens: int = 0,
     cache_creation_input_tokens: int = 0,
+    stop_reason: str | None = None,
 ) -> None:
     """Record one Claude response's token usage and log it for its node."""
     node_name = node or current_llm_node()
@@ -451,6 +481,7 @@ def record_api_usage(
         max_tokens=max_tokens,
         cache_read_input_tokens=cache_read_input_tokens,
         cache_creation_input_tokens=cache_creation_input_tokens,
+        stop_reason=stop_reason,
     )
     if metrics is not None:
         call = metrics.add_usage(**call_kwargs)

@@ -114,6 +114,7 @@ async def call_claude(
                 cache_creation_input_tokens=_usage_field(
                     usage, "cache_creation_input_tokens"
                 ),
+                stop_reason=getattr(message, "stop_reason", None),
             )
             parts = [
                 block.text

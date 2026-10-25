@@ -90,6 +90,28 @@ def test_record_api_usage_via_context():
     assert m.to_cost_dict()["dominant_node"] == "gap_check"
 
 
+def test_max_tokens_stop_is_flagged_as_truncated():
+    m = JobMetrics(job_id="x", model="claude-haiku-5-5", cost_mode="full")
+    m.add_usage(
+        200,
+        512,
+        node="gap_check",
+        max_tokens=512,
+        stop_reason="max_tokens",
+    )
+    m.add_usage(100, 40, node="plan", max_tokens=512, stop_reason="end_turn")
+    report = m.to_cost_dict()
+    assert report["truncated_calls"] == [
+        {
+            "call_index": 0,
+            "node": "gap_check",
+            "output_tokens": 512,
+            "max_tokens": 512,
+        }
+    ]
+    assert report["nodes"][0]["truncated"] is True
+
+
 def test_estimate_flags_prompts_that_could_exceed_100k():
     assert long_context_input_threshold() == 100_000
     assert estimate_input_tokens("short", "prompt") < 100_000
