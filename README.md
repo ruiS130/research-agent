@@ -8,6 +8,51 @@ Local research agent: topic in → web search → markdown report with sources �
 
 **Next steps:** (1) auth + rate limits, (2) Docker / deploy, (3) record a live eval baseline before prompt or model changes, (4) finish shareable report page + UI polish. Full checklist: [TODO / roadmap](#todo--roadmap).
 
+## Product preview
+
+Inspectors can see the UI and a real finished report without running the server.
+
+### Demo UI (home)
+
+Topic form, live pipeline steps (`plan` → … → `done`), and history of past runs:
+
+![Research Agent demo UI](docs/ui-home.png)
+
+### Finished run + final report
+
+Same product surface after a completed job (`COST_MODE=min`, Haiku 5.5, ~**$0.0005**, 1 API call). Topic: *Solid-state battery commercial barriers 2024–2025*:
+
+![Research Agent final report view](docs/ui-report.png)
+
+Full markdown (with sources + cost/timing metadata): **[docs/sample-report.md](docs/sample-report.md)**
+
+Static preview page (when the app is running): http://localhost:8000/static/product-preview.html
+
+<details>
+<summary>Sample report excerpt</summary>
+
+```markdown
+# Research Brief: Solid-State Battery Commercial Barriers (2024–2025)
+
+## Summary
+Solid-state batteries (SSBs) are moving from research toward commercialization,
+with a likely path that starts in consumer electronics and later reaches electric
+vehicles (EVs) [1]. Current barriers cluster around electrolyte selection,
+interface stability, manufacturing scale-up, and cost [1][2].
+
+## Key Findings
+- Staged commercialization path (devices → EVs) [1]
+- Electrolyte choice shapes the timeline [1][2]
+- Interface stability is the near-term hurdle [2]
+- Manufacturing and cost remain unresolved [1]
+
+## Sources
+[1] https://atomfair.com/battery-research/solid-state-battery-commercialization-timelines/
+[2] https://www.sciencedirect.com/science/article/pii/S0378775325021913
+```
+
+</details>
+
 ## Architecture
 
 ```
@@ -44,6 +89,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 | URL | What |
 |-----|------|
 | http://localhost:8000/ | Demo UI (topic, live SSE steps, report, history) |
+| http://localhost:8000/static/product-preview.html | Static snapshot of UI + sample final report |
 | http://localhost:8000/do-next | Same roadmap as below (needs server running) |
 | http://localhost:8000/docs | OpenAPI / Swagger |
 
@@ -97,9 +143,14 @@ app/
   main.py           # FastAPI app, / and /do-next, lifespan (Chroma + SQLite init)
   schemas.py        # Pydantic models
   static/
-    index.html      # Demo UI (report still inline here)
-    do-next.html    # In-browser roadmap (optional; README is source of truth when undeployed)
-    report.html     # Dedicated report page stub (not finished)
+    index.html              # Demo UI (report still inline here)
+    product-preview.html    # Static UI + baked sample report (for demos/README)
+    do-next.html            # In-browser roadmap
+    report.html             # Dedicated report page stub (not finished)
+docs/
+  ui-home.png               # README screenshot: home UI
+  ui-report.png             # README screenshot: finished report
+  sample-report.md          # Full sample final report + metadata
   jobs/
     store.py        # Durable SQLite jobs (upsert + interrupt-on-boot)
   observability.py  # JSON logs, token/cost tracking
