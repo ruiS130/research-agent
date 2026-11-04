@@ -6,7 +6,7 @@ Multi-step AI research agent: **FastAPI** + **LangGraph** + **Claude** + **Chrom
 
 Local research agent: topic in → web search → markdown report with sources → live SSE progress on `/` → finished work stored in **Chroma** (RAG/history). Orchestrated as a LangGraph pipeline (plan → search → extract → synthesize → gap_check → done). Default **`COST_MODE=min`** ≈ one Haiku call per job; set **`COST_MODE=full`** for the full agentic loop. **Job status is durable in SQLite** (upsert every node; in-flight jobs marked `interrupted` on restart). Structured logs include `job_id`, per-node timing, per-node token usage, and estimated USD cost. A Haiku 5.5 prompt that could exceed 100K input tokens is flagged (the whole request bills at 5× above that). Dedicated **`/report/{id}`** is still a stub (report shows inline on home).
 
-**Next steps:** (1) auth + rate limits, (2) Docker / deploy, (3) record a live eval baseline before prompt or model changes, (4) finish shareable report page + UI polish. Full checklist: [TODO / roadmap](#todo--roadmap).
+**Next steps:** (1) finish the shareable report page + UI polish, (2) record live eval baselines, (3) CI + Docker, (4) auth, rate limits, and a spending cap, then deploy. Full plan: [ROADMAP.md](ROADMAP.md).
 
 ## Product preview
 
@@ -90,7 +90,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 |-----|------|
 | http://localhost:8000/ | Demo UI (topic, live SSE steps, report, history) |
 | http://localhost:8000/static/product-preview.html | Static snapshot of UI + sample final report |
-| http://localhost:8000/do-next | Same roadmap as below (needs server running) |
+| http://localhost:8000/do-next | Older in-app roadmap page (see [ROADMAP.md](ROADMAP.md) for the current plan) |
 | http://localhost:8000/docs | OpenAPI / Swagger |
 
 If the browser shows `ERR_CONNECTION_REFUSED`, nothing is listening on that port — start uvicorn first.
@@ -101,7 +101,7 @@ If the browser shows `ERR_CONNECTION_REFUSED`, nothing is listening on that port
 |--------|------|-------------|
 | GET | `/health` | Health check |
 | GET | `/` | Demo UI |
-| GET | `/do-next` | Roadmap page (mirror of README TODO) |
+| GET | `/do-next` | Older in-app roadmap page (superseded by `ROADMAP.md`) |
 | GET | `/report/{id}` | Report page (**stub only** — not finished) |
 | POST | `/research` | Start a research job |
 | GET | `/research/{id}` | Poll status (SQLite → Chroma fallback) |
@@ -226,61 +226,13 @@ Live runs spend `ANTHROPIC_API_KEY` credits. Results land in `eval_results/` (gi
 - **Chroma recovery** — completed jobs reload after restart; `GET /history/{session_id}` for full reports.
 - **Search fallback** — optional Tavily/Serper when DDG fails (see `.env.example`).
 - **Tests** — `pytest` with mocked Claude/search (`requirements-dev.txt`).
-- **`/do-next` page** — in-app roadmap; this README section is the offline copy.
+- **`/do-next` page** — in-app roadmap (now superseded by `ROADMAP.md`).
 - **Durable SQLite jobs** — upsert on every node; no in-memory `_jobs`; interrupt non-terminal jobs on boot.
 - **Observability** — structured logs + `timing` / `cost` on job status responses.
 - **Report page stub** — `GET /report/{id}` serves a placeholder; full page not built yet (plan below).
 
-## TODO / roadmap
+## Roadmap
 
-Readable here without running the server. The `/do-next` page shows the same list when uvicorn is up.
+The full plan lives in **[ROADMAP.md](ROADMAP.md)**: four phases (finish the demo, prove it works with eval numbers, make it safe to deploy, tell the story), plus stretch goals and a list of what has shipped.
 
-### Shipped
-
-- [x] SSE progress: `GET /research/{id}/stream`
-- [x] Minimal web UI (topic, live steps, report, history)
-- [x] Recover completed jobs from Chroma after restart
-- [x] `GET /history/{session_id}` full report
-- [x] pytest suite with mocked Claude/search
-- [x] Optional search provider (Tavily/Serper) fallback
-- [x] `/do-next` roadmap page (also documented in this README)
-- [x] Min-cost mode (`COST_MODE=min`, ~1 Haiku call/job)
-
-### Done — durable in-flight jobs (SQLite)
-
-- [x] Schema + `init_db` / `create_job` / `get_job` / `save_job`
-- [x] Upsert status / `last_node` / report / timing / cost on every graph node update
-- [x] Mark interrupted jobs on process start
-- [x] Drop in-memory `_jobs` dict (SQLite is source of truth)
-- [ ] (Later) Resume a mid-pipeline LangGraph run after crash
-
-### Done — observability
-
-- [x] Structured JSON logs with `job_id`
-- [x] Per-node timing (ms) on job status + logs
-- [x] Per-job token usage + `estimated_usd` (model rate table / env overrides)
-- [x] Per-call `input_tokens` / `output_tokens` tagged by LangGraph node, plus Haiku 5.5 100K long-context flag
-
-### Planned — separate report page (not finished)
-
-**Why:** Demos need a shareable URL (“here’s the report”) instead of only the inline panel on `/`.
-
-**Target URL:** `/report/{job_id}` (same id as Chroma `session_id`).
-
-| Step | Status | Notes |
-|------|--------|--------|
-| Route + placeholder HTML | Done (stub) | `GET /report/{id}` → `static/report.html` |
-| Fetch job/report JSON | Not done | Use existing `GET /research/{id}` and/or `GET /history/{id}` |
-| Render markdown + sources | Not done | marked.js (or similar), sources list with links |
-| Wire from home / history | Not done | “Open report” → `/report/{id}` after `done` |
-| In-progress / missing job | Not done | Show “still running” or 404 / link back to `/` |
-| Share extras | Not done | Copy link, download `.md` (optional) |
-
-Until this ships, keep showing the report on the home UI.
-
-### Next (priority order)
-
-- [ ] Auth + rate limit (before any public URL)
-- [ ] Deploy story (Dockerfile + short run-anywhere docs)
-- [x] Eval harness (16 questions: facts, citation match, coverage). Live baseline still to record before prompt/model changes
-- [ ] Finish report page + UI polish (shareable demo last)
+Top three priorities: finish the `/report/{id}` page, record eval baselines, and deploy with auth and a spending cap.
