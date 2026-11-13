@@ -48,7 +48,7 @@
       margin-bottom: 1.5rem;
     }
     label { font-size: 0.9rem; color: var(--muted); }
-    textarea, input[type="text"] {
+    textarea, input[type="text"], input[type="password"] {
       width: 100%;
       padding: 0.85rem 1rem;
       border: 1px solid var(--line);
@@ -178,6 +178,10 @@
     <form id="research-form">
       <label for="topic">Topic</label>
       <textarea id="topic" rows="3" required minlength="3" placeholder="e.g. Latest advances in solid-state batteries"></textarea>
+      <div class="row" id="access-row" hidden>
+        <label for="access-code">Access code</label>
+        <input type="password" id="access-code" autocomplete="current-password" placeholder="Required when this app is shared" />
+      </div>
       <div class="row">
         <label class="check">
           <input type="checkbox" id="use-past" />
@@ -211,7 +215,33 @@
     const metaEl = document.getElementById("meta");
     const reportEl = document.getElementById("report");
     const historyEl = document.getElementById("history");
+    const accessRow = document.getElementById("access-row");
+    const accessEl = document.getElementById("access-code");
     let es = null;
+
+    function accessHeaders() {
+      const key = (accessEl.value || "").trim();
+      if (!key) return {};
+      const secure = location.protocol === "https:" ? "; Secure" : "";
+      document.cookie =
+        "research_access=" + encodeURIComponent(key) +
+        "; Path=/; SameSite=Lax" + secure;
+      sessionStorage.setItem("research_access", key);
+      return { "X-API-Key": key };
+    }
+
+    async function initAuth() {
+      try {
+        const res = await fetch("/health");
+        const data = await res.json();
+        if (!data.auth_required) return;
+        accessRow.hidden = false;
+        const saved = sessionStorage.getItem("research_access") || "";
+        if (saved) accessEl.value = saved;
+      } catch (_) {
+        /* health is optional for the form itself */
+      }
+    }
 
     function renderSteps(active) {
       stepsEl.innerHTML = "";
@@ -243,9 +273,14 @@
 
     async function loadHistory() {
       try {
-        const res = await fetch("/history?limit=12");
-        const data = await res.json();
+        const res = await fetch("/history?limit=12", { headers: accessHeaders() });
+        const data = await res.json().catch(() => ({}));
         historyEl.innerHTML = "";
+        if (!res.ok) {
+          historyEl.innerHTML =
+            '<li class="empty">Enter the access code to load history.</li>';
+          return;
+        }
         if (!data.sessions || !data.sessions.length) {
           historyEl.innerHTML = '<li class="empty">No past sessions yet.</li>';
           return;
@@ -270,7 +305,7 @@
     async function openSession(id) {
       if (es) { es.close(); es = null; }
       setMeta("Loading session " + id);
-      const res = await fetch("/history/" + id);
+      const res = await fetch("/history/" + id, { headers: accessHeaders() });
       if (!res.ok) {
         setMeta("Session not found", true);
         return;
@@ -283,6 +318,7 @@
 
     function attachStream(jobId) {
       if (es) es.close();
+      accessHeaders();
       es = new EventSource("/research/" + jobId + "/stream");
 
       const onPayload = (raw, terminal) => {
@@ -329,7 +365,7 @@
       try {
         const res = await fetch("/research", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...accessHeaders() },
           body: JSON.stringify({
             topic: topicEl.value.trim(),
             use_past_research: usePastEl.checked,
@@ -349,7 +385,7 @@
     });
 
     renderSteps(null);
-    loadHistory();
+    initAuth().then(loadHistory);
   </script>
 </body>
 </html>

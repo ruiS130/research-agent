@@ -195,7 +195,15 @@ COST_MODE=full
 ANTHROPIC_MODEL=claude-sonnet-5-5
 ```
 
-`GET /health` reports `cost_mode` and `anthropic_model`.
+`GET /health` reports `cost_mode`, `anthropic_model`, and `auth_required`.
+
+## Access control
+
+`ANTHROPIC_API_KEY` stays on the server. It is not the login.
+
+Leave `APP_API_KEY` empty when you only open the app on your own machine. Set it before anyone else can reach the process — a deployed host, a tunnel, or a shared network address. Then `POST /research`, `GET /research/...`, and `/history` require that key (`Authorization: Bearer <key>`, `X-API-Key`, or a `research_access` cookie). The home page asks for it when `/health` reports `auth_required`.
+
+`POST /research` is also limited per IP (default 10 starts per 10 minutes). The limit lives in this process. Set `TRUST_PROXY=1` only when a reverse proxy overwrites `X-Forwarded-For`. A daily spending cap is not in place yet.
 
 ## Evals
 

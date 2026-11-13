@@ -1,12 +1,17 @@
 """GET /history — past research sessions from RAG."""
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.rag.memory import list_session_history
 from app.rag.store import get_session_by_id
 from app.schemas import HistoryDetailResponse, HistoryItem, HistoryResponse
+from app.security import require_access
 
-router = APIRouter(prefix="/history", tags=["history"])
+router = APIRouter(
+    prefix="/history",
+    tags=["history"],
+    dependencies=[Depends(require_access)],
+)
 
 
 @router.get("", response_model=HistoryResponse)

@@ -34,7 +34,10 @@ The core engineering is in place (LangGraph pipeline, durable SQLite jobs, cost 
 
 - [ ] **8. CI:** GitHub Actions running pytest + ruff on every push, with a README badge
 - [ ] **9. Docker:** `Dockerfile` + `docker-compose.yml`, Chroma and SQLite on a volume, one-command start
-- [ ] **10. Access control:** access code or API key, per-IP rate limits, hard daily spending cap
+- [ ] **10. Access control**
+  - [x] API key (`APP_API_KEY`); localhost stays open when it is unset. Header, bearer token, or `research_access` cookie
+  - [x] Per-IP rate limit on `POST /research` (in-memory, this process)
+  - [ ] Hard daily spending cap
 - [ ] **11. Deploy** (Fly.io, Railway, or Render) with a persistent volume; live link at the top of the README
 - [ ] **12. Background work:** document that FastAPI `BackgroundTasks` assumes a single instance, or move to a small worker queue before scaling out
 

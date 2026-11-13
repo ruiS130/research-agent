@@ -35,6 +35,11 @@ def chroma_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture()
 def client(chroma_tmp, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
+    monkeypatch.delenv("APP_API_KEY", raising=False)
+    monkeypatch.setenv("RESEARCH_RATE_LIMIT", "1000")
+    from app.security import reset_rate_limits
+
+    reset_rate_limits()
     from app.main import app
 
     with TestClient(app) as c:

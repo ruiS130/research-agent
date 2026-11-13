@@ -7,7 +7,7 @@ import traceback
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.agent.graph import research_graph
@@ -24,8 +24,13 @@ from app.observability import (
 from app.rag.retriever import format_sources_for_response
 from app.rag.store import get_session_by_id
 from app.schemas import ResearchJobResponse, ResearchRequest, ResearchStatusResponse
+from app.security import enforce_research_rate_limit, require_access
 
-router = APIRouter(prefix="/research", tags=["research"])
+router = APIRouter(
+    prefix="/research",
+    tags=["research"],
+    dependencies=[Depends(require_access)],
+)
 
 _TERMINAL = frozenset({"done", "error", "interrupted"})
 
@@ -96,8 +101,10 @@ def _persist(job: dict) -> None:
 @router.post("", response_model=ResearchJobResponse)
 async def start_research(
     body: ResearchRequest,
+    request: Request,
     background_tasks: BackgroundTasks,
 ) -> ResearchJobResponse:
+    enforce_research_rate_limit(request)
     job_id = str(uuid.uuid4())
     job = {
         "id": job_id,

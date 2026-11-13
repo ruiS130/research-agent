@@ -58,6 +58,7 @@ async def health():
         "cost_mode": cost_mode(),
         "anthropic_model": anthropic_model(),
         "max_gap_loops": max_gap_loops(),
+        "auth_required": bool((os.getenv("APP_API_KEY") or "").strip()),
     }
 
 
