@@ -4,7 +4,7 @@ Multi-step AI research agent: **FastAPI** + **LangGraph** + **Claude** + **Chrom
 
 ## Summary
 
-Local research agent: topic in → web search → markdown report with sources → live SSE progress on `/` → finished work stored in **Chroma** (RAG/history). Orchestrated as a LangGraph pipeline (plan → search → extract → synthesize → gap_check → done). Default **`COST_MODE=min`** ≈ one Haiku call per job; set **`COST_MODE=full`** for the full agentic loop. **Job status is durable in SQLite** (upsert every node; in-flight jobs marked `interrupted` on restart). Structured logs include `job_id`, per-node timing, per-node token usage, and estimated USD cost. A Haiku 5.5 prompt that could exceed 100K input tokens is flagged (the whole request bills at 5× above that). Dedicated **`/report/{id}`** is still a stub (report shows inline on home).
+Local research agent: topic in → web search → markdown report with sources → live SSE progress on `/` → finished work stored in **Chroma** (RAG/history). Orchestrated as a LangGraph pipeline (plan → search → extract → synthesize → gap_check → done). Default **`COST_MODE=min`** ≈ one Haiku call per job; set **`COST_MODE=full`** for the full agentic loop. **Job status is durable in SQLite** (upsert every node; in-flight jobs marked `interrupted` on restart). Structured logs include `job_id`, per-node timing, per-node token usage, and estimated USD cost. A Haiku 5.5 prompt that could exceed 100K input tokens is flagged (the whole request bills at 5× above that). A finished run also has a shareable page at **`/report/{id}`**.
 
 **Next steps:** (1) finish the shareable report page + UI polish, (2) record live eval baselines, (3) CI + Docker, (4) auth, rate limits, and a spending cap, then deploy. Full plan: [ROADMAP.md](ROADMAP.md).
 
@@ -102,7 +102,7 @@ If the browser shows `ERR_CONNECTION_REFUSED`, nothing is listening on that port
 | GET | `/health` | Health check |
 | GET | `/` | Demo UI |
 | GET | `/do-next` | Older in-app roadmap page (superseded by `ROADMAP.md`) |
-| GET | `/report/{id}` | Report page (**stub only** — not finished) |
+| GET | `/report/{id}` | Shareable report (markdown, sources, copy link, download) |
 | POST | `/research` | Start a research job |
 | GET | `/research/{id}` | Poll status (SQLite → Chroma fallback) |
 | GET | `/research/{id}/stream` | SSE progress events |
@@ -143,10 +143,10 @@ app/
   main.py           # FastAPI app, / and /do-next, lifespan (Chroma + SQLite init)
   schemas.py        # Pydantic models
   static/
-    index.html              # Demo UI (report still inline here)
+    index.html              # Demo UI (live run, plus a link to /report/{id})
     product-preview.html    # Static UI + baked sample report (for demos/README)
     do-next.html            # In-browser roadmap
-    report.html             # Dedicated report page stub (not finished)
+    report.html             # Shareable report page
 docs/
   ui-home.png               # README screenshot: home UI
   ui-report.png             # README screenshot: finished report
@@ -237,10 +237,10 @@ Live runs spend `ANTHROPIC_API_KEY` credits. Results land in `eval_results/` (gi
 - **`/do-next` page** — in-app roadmap (now superseded by `ROADMAP.md`).
 - **Durable SQLite jobs** — upsert on every node; no in-memory `_jobs`; interrupt non-terminal jobs on boot.
 - **Observability** — structured logs + `timing` / `cost` on job status responses.
-- **Report page stub** — `GET /report/{id}` serves a placeholder; full page not built yet (plan below).
+- **Report page** — `GET /report/{id}` renders the markdown report, numbered sources, copy link, and download. Home and history link to it when a run is done.
 
 ## Roadmap
 
 The full plan lives in **[ROADMAP.md](ROADMAP.md)**: four phases (finish the demo, prove it works with eval numbers, make it safe to deploy, tell the story), plus stretch goals and a list of what has shipped.
 
-Top three priorities: finish the `/report/{id}` page, record eval baselines, and deploy with auth and a spending cap.
+Top priorities: record eval baselines, then deploy with a spending cap. The `/report/{id}` page is in place.

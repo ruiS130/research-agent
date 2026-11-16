@@ -63,6 +63,7 @@
       gap: 1rem;
       align-items: center;
     }
+    #access-row[hidden], #report-link[hidden] { display: none; }
     .check {
       display: flex;
       gap: 0.5rem;
@@ -165,6 +166,13 @@
       font-family: ui-sans-serif, system-ui, sans-serif;
     }
     .empty { color: var(--muted); font-size: 0.9rem; }
+    .report-link {
+      display: inline-block;
+      margin-top: 0.35rem;
+      font-size: 0.85rem;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+    #open-report { font-size: 0.9rem; }
   </style>
 </head>
 <body>
@@ -196,6 +204,7 @@
         <h2>Live run</h2>
         <div class="steps" id="steps"></div>
         <div class="meta" id="meta">Idle</div>
+        <p id="report-link" hidden><a id="open-report" href="/">Open report</a></p>
         <div id="report" class="empty">Submit a topic to begin.</div>
       </section>
       <aside class="panel">
@@ -217,7 +226,20 @@
     const historyEl = document.getElementById("history");
     const accessRow = document.getElementById("access-row");
     const accessEl = document.getElementById("access-code");
+    const reportLinkEl = document.getElementById("report-link");
+    const openReportEl = document.getElementById("open-report");
     let es = null;
+    let currentJobId = null;
+
+    function showOpenReport(id) {
+      if (!id) {
+        reportLinkEl.hidden = true;
+        return;
+      }
+      currentJobId = id;
+      openReportEl.href = "/report/" + encodeURIComponent(id);
+      reportLinkEl.hidden = false;
+    }
 
     function accessHeaders() {
       const key = (accessEl.value || "").trim();
@@ -294,7 +316,12 @@
           btn.querySelector(".topic").textContent = s.topic;
           btn.querySelector(".snippet").textContent = s.snippet || "";
           btn.addEventListener("click", () => openSession(s.session_id));
+          const link = document.createElement("a");
+          link.className = "report-link";
+          link.href = "/report/" + encodeURIComponent(s.session_id);
+          link.textContent = "Open report";
           li.appendChild(btn);
+          li.appendChild(link);
           historyEl.appendChild(li);
         }
       } catch (err) {
@@ -314,6 +341,7 @@
       renderSteps("done");
       setMeta("Past session · " + data.topic);
       showReport(data.report || "");
+      showOpenReport(id);
     }
 
     function attachStream(jobId) {
@@ -339,6 +367,7 @@
         }
         if (terminal) {
           submitBtn.disabled = false;
+          if (data.status === "done") showOpenReport(jobId);
           loadHistory();
           es.close();
           es = null;
@@ -376,6 +405,8 @@
           throw new Error(err.detail || "Failed to start research");
         }
         const job = await res.json();
+        currentJobId = job.id;
+        reportLinkEl.hidden = true;
         setMeta("Job " + job.id);
         attachStream(job.id);
       } catch (err) {

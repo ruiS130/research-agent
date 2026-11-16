@@ -34,6 +34,15 @@ def test_demo_ui(client):
     res = client.get("/")
     assert res.status_code == 200
     assert "Research Agent" in res.text
+    assert 'id="open-report"' in res.text
+
+
+def test_report_page_shell(client):
+    res = client.get("/report/job-123")
+    assert res.status_code == 200
+    assert "Copy link" in res.text
+    assert "Download .md" in res.text
+    assert "not finished" not in res.text.lower()
 
 
 @pytest.mark.asyncio

@@ -79,8 +79,8 @@ async def do_next_page():
 
 
 @app.get("/report/{job_id}")
-async def report_page_stub(job_id: str):
-    """Placeholder for a dedicated report page — not implemented yet (see /do-next)."""
+async def report_page(job_id: str):
+    """Shareable report view. The page loads job JSON from /research and /history."""
     page = STATIC_DIR / "report.html"
     if not page.is_file():
         return {

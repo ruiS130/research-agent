@@ -2,21 +2,21 @@
 
 Goal: make this a project someone can open from a link, try in 30 seconds, and understand from the README in under a minute.
 
-The core engineering is in place (LangGraph pipeline, durable SQLite jobs, cost tracking, eval set, tests). What's missing is what an outside viewer sees: a finished report page, recorded eval numbers, CI, and a live deployment.
+The core engineering is in place (LangGraph pipeline, durable SQLite jobs, cost tracking, eval set, tests, shareable report page). What's missing is what an outside viewer sees next: recorded eval numbers, CI, and a live deployment.
 
-**If time is short, do these three first:** finish the report page (1), record eval numbers (5), deploy with a spending cap (10, 11).
+**If time is short, do these next:** record eval numbers (5), then deploy with a spending cap (10, 11).
 
 ## Phase 1 — Finish the demo
 
 *Goal: the app looks finished when run locally.*
 
-- [ ] **1. Finish `/report/{id}`** (same id as Chroma `session_id`)
-  - [x] Route + placeholder HTML (`static/report.html`)
-  - [ ] Fetch job/report JSON from `GET /research/{id}` and/or `GET /history/{id}`
-  - [ ] Render markdown with numbered, clickable sources
-  - [ ] "Still running" and "not found" states, with a link back to `/`
-  - [ ] Copy link and download `.md`
-- [ ] **2. Link to it everywhere:** "Open report" button when a job reaches `done`, and links from the history list
+- [x] **1. Finish `/report/{id}`** (same id as Chroma `session_id`)
+  - [x] Route + report page (`static/report.html`)
+  - [x] Fetch job/report JSON from `GET /research/{id}`, then `GET /history/{id}`
+  - [x] Render markdown with numbered, clickable sources
+  - [x] "Still running" and "not found" states, with a link back to `/`
+  - [x] Copy link and download `.md`
+- [x] **2. Link to it everywhere:** "Open report" when a job reaches `done`, and links from the history list
 - [ ] **3. UI polish:** cleaner layout, a loading state per pipeline step, friendly errors (search failed, missing API key), works on phones
 - [ ] **4. Reliable search for demos:** Tavily as the main provider, DuckDuckGo HTML as the fallback
 
